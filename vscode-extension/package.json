@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RyanEwen/devkit.git",
+    "url": "https://github.com/Dynamic-Solutions-Canada/devkit.git",
     "directory": "vscode-extension"
   },
   "engines": {

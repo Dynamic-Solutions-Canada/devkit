@@ -15,9 +15,11 @@ By default, the only machine-wide service is Traefik on loopback port 80. It sta
 Requires Node 22.12 or later on the 22 or 24 line. devkit is developed on the Node version in `.nvmrc`, but `engines.node` stays a range so apps still on Node 22 can install it with `engine-strict=true`. This is a deliberate, temporary exception to the exact-pin rule for a shared library; the range narrows to the exact fleet version once every app has moved to it.
 
 ```bash
-npm install --save-dev github:RyanEwen/devkit
+npm install --save-dev github:Dynamic-Solutions-Canada/devkit#vX.Y.Z
 npx devkit bootstrap
 ```
+
+Replace `vX.Y.Z` with the latest release tag. Apps pin a tag, never a branch, so every change reaches them only through a pin bump.
 
 Bootstrap installs the proxy and database Compose definitions under `~/.config/devkit` and writes the marker that enables Devkit. Devkit stays off inside containers, when `DEVKIT=0`, or before bootstrap. An app then opts in with a `devkit.config.mjs` and by calling `preflight()` from its dev runner, both described below.
 
@@ -65,7 +67,7 @@ import {
   checkoutCompose,
   checkoutComposeLifecycle,
   preflight,
-} from '@ryanewen/devkit'
+} from '@dynamic-solutions-canada/devkit'
 
 const teardown = process.argv.includes('--down')
 const state = await preflight({ repoRoot, teardown })
@@ -113,7 +115,7 @@ Preflight reads these arguments from its own process. Runners that consume argum
 
 Devkit CLI commands respect the current checkout's `.nvmrc`, including non-interactive worktree hooks. They select an already-installed runtime from `NVM_DIR` (default `~/.nvm`), put its tools first on PATH, and check exact npm pins in `package.json`. Installed nvm aliases are supported; exact versions make setup reproducible. Missing runtimes or conflicting pins stop before installs or infrastructure changes. Devkit never installs Node/npm or changes nvm's default.
 
-Use `devkit run npm run dev` to select the runtime before a project runner starts. A Paseo setup hook can invoke `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@ryanewen/devkit/bin/devkit.mjs" prepare` when the new worktree has no dependencies yet; `prepare` selects the target worktree's runtime. Apply the same launcher to dev, teardown, build and agent-hook commands. Projects without `.nvmrc` retain their invoking runtime.
+Use `devkit run npm run dev` to select the runtime before a project runner starts. A Paseo setup hook can invoke `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@dynamic-solutions-canada/devkit/bin/devkit.mjs" prepare` when the new worktree has no dependencies yet; `prepare` selects the target worktree's runtime. Apply the same launcher to dev, teardown, build and agent-hook commands. Projects without `.nvmrc` retain their invoking runtime.
 
 Library calls to `preflight`, `prepareDatabase` and `prepareCheckout` validate the executing runtime before preparing dependencies. They fail with an actionable message instead of replaying a runner that might already hold a checkout lease. Command entrypoints own runtime selection. A stale outer npm identity is cleared so preparation and startup use the same dependency fingerprint.
 
@@ -180,7 +182,7 @@ cleanup: {
 
 Names must start with `{project}-` or `{project}_`; cleanup also verifies each existing volume's Compose project label. Shared engine caches, CLI credentials, and other repositories' volumes must never appear here. Docker refuses removal of any volume still mounted by a container.
 
-For Paseo, set `worktree.teardown` to `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@ryanewen/devkit/bin/devkit.mjs" cleanup --paseo --yes`. The source checkout CLI works even when worktree setup failed before installing dependencies. `--paseo` requires the matching teardown environment and queries all active workspaces, including background workspaces, before stopping anything and again before deleting data. Remaining references preserve resources; an unavailable or malformed query fails closed. The CLI uses `PASEO_HOME`/`PASEO_HOST` and discovers `paseo-plus-plus` or `paseo` on PATH (`PASEO_CLI` overrides the executable). Paseo remains responsible for the final reference check and directory removal. Do not reopen a worktree while its archive operation is running.
+For Paseo, set `worktree.teardown` to `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@dynamic-solutions-canada/devkit/bin/devkit.mjs" cleanup --paseo --yes`. The source checkout CLI works even when worktree setup failed before installing dependencies. `--paseo` requires the matching teardown environment and queries all active workspaces, including background workspaces, before stopping anything and again before deleting data. Remaining references preserve resources; an unavailable or malformed query fails closed. The CLI uses `PASEO_HOME`/`PASEO_HOST` and discovers `paseo-plus-plus` or `paseo` on PATH (`PASEO_CLI` overrides the executable). Paseo remains responsible for the final reference check and directory removal. Do not reopen a worktree while its archive operation is running.
 
 ## Remote development and an existing nginx server
 
