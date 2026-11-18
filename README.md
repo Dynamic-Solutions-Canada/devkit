@@ -16,6 +16,8 @@ stacks do not share Docker networks or databases. Inactive stacks keep only thei
 
 ## Setup
 
+Requires Node 22.12 or later on the 22 or 24 line. devkit is developed on the Node version in `.nvmrc`, but `engines.node` stays a range so apps still on Node 22 can install it with `engine-strict=true`. This is a deliberate, temporary exception to the exact-pin rule for a shared library; the range narrows to the exact fleet version once every app has moved to it.
+
 ```bash
 npm install --save-dev github:RyanEwen/devkit
 npx devkit bootstrap
