@@ -37,15 +37,21 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 | `npm test`                        | The unit tests pass on this Node                   | Behaviour against a live proxy, Docker or Paseo; one host-listener test skips itself without them |
 | `npm run build:browser-extension` | The VS Code browser bridge packages into a `.vsix` | That the extension works in VS Code                                                               |
 
+## Release
+
+A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which checks the tag against `package.json` and `release-notes/<version>.md` and creates the GitHub Release. The procedure is the `release` skill.
+
 ## Guidance map
 
 | Guide, doc, or skill | Read or use when                                  | Governs                                    |
 | -------------------- | ------------------------------------------------- | ------------------------------------------ |
 | `README.md`          | Changing any command, config option or setup step | How apps install, configure and run devkit |
+| `release` skill      | Releasing a version                               | Notes, bump, tag and the Release           |
 
 ## Keeping docs current
 
-| What changed                                   | Update                       |
-| ---------------------------------------------- | ---------------------------- |
-| A command, option or `devkit.config.mjs` field | `README.md`                  |
-| An area or entry point moved                   | The Architecture table above |
+| What changed                                   | Update                         |
+| ---------------------------------------------- | ------------------------------ |
+| A command, option or `devkit.config.mjs` field | `README.md`                    |
+| An area or entry point moved                   | The Architecture table above   |
+| Anything a consuming app will notice           | The next `release-notes/` file |
