@@ -5,13 +5,13 @@ import { releaseProxy as releaseSharedProxy } from './proxy.mjs'
 const SIGNAL_EXIT_CODES = {
   SIGHUP: 129,
   SIGINT: 130,
-  SIGTERM: 143
+  SIGTERM: 143,
 }
 
 const defaultRuntime = {
   process,
   spawn,
-  spawnSync
+  spawnSync,
 }
 
 /** Adds Compose profiles before an action so profiled services participate in stack teardown. */
@@ -37,13 +37,26 @@ function exitCodeFor(code, signal) {
 export function checkoutComposeLifecycle(
   state,
   invocation,
-  { profiles = [], runtime = defaultRuntime, releaseProxy = releaseSharedProxy } = {}
+  {
+    profiles = [],
+    runtime = defaultRuntime,
+    releaseProxy = releaseSharedProxy,
+  } = {},
 ) {
   if (!state?.config || !state?.identity) {
-    throw new Error('devkit: checkoutComposeLifecycle requires a completed preflight state')
+    throw new Error(
+      'devkit: checkoutComposeLifecycle requires a completed preflight state',
+    )
   }
-  if (!invocation?.command || !Array.isArray(invocation.args) || !invocation.cwd || !invocation.env) {
-    throw new Error('devkit: checkoutComposeLifecycle requires a checkout Compose invocation')
+  if (
+    !invocation?.command ||
+    !Array.isArray(invocation.args) ||
+    !invocation.cwd ||
+    !invocation.env
+  ) {
+    throw new Error(
+      'devkit: checkoutComposeLifecycle requires a checkout Compose invocation',
+    )
   }
 
   let stopped = false
@@ -63,13 +76,13 @@ export function checkoutComposeLifecycle(
           ...invocation.args,
           ...profileArgs(profiles),
           'down',
-          '--remove-orphans'
+          '--remove-orphans',
         ],
         {
           cwd: invocation.cwd,
           env: invocation.env,
-          stdio: 'inherit'
-        }
+          stdio: 'inherit',
+        },
       )
       cleanupCode = exitCodeFor(result.status, result.signal)
     } catch (error) {
@@ -84,7 +97,9 @@ export function checkoutComposeLifecycle(
         try {
           state.runner?.release()
         } catch (error) {
-          console.error(`[devkit] runner lease cleanup failed: ${error.message}`)
+          console.error(
+            `[devkit] runner lease cleanup failed: ${error.message}`,
+          )
           cleanupCode = 1
         }
       }
@@ -102,21 +117,19 @@ export function checkoutComposeLifecycle(
 
   /** Runs one foreground Compose action and resolves after the full stack has been removed. */
   async function run(args) {
-    if (running) throw new Error('devkit: a checkout Compose lifecycle can only run once')
-    if (stopped) throw new Error('devkit: a stopped checkout Compose lifecycle cannot run')
+    if (running)
+      throw new Error('devkit: a checkout Compose lifecycle can only run once')
+    if (stopped)
+      throw new Error('devkit: a stopped checkout Compose lifecycle cannot run')
     running = true
 
     let child
     try {
-      child = runtime.spawn(
-        invocation.command,
-        [...invocation.args, ...args],
-        {
-          cwd: invocation.cwd,
-          env: invocation.env,
-          stdio: 'inherit'
-        }
-      )
+      child = runtime.spawn(invocation.command, [...invocation.args, ...args], {
+        cwd: invocation.cwd,
+        env: invocation.env,
+        stdio: 'inherit',
+      })
     } catch (error) {
       stop()
       throw error
@@ -127,7 +140,8 @@ export function checkoutComposeLifecycle(
     for (const signal of Object.keys(SIGNAL_EXIT_CODES)) {
       const handler = () => {
         receivedSignal ??= signal
-        if (child.exitCode === null && child.signalCode === null) child.kill(signal)
+        if (child.exitCode === null && child.signalCode === null)
+          child.kill(signal)
       }
       signalHandlers.set(signal, handler)
       runtime.process.once(signal, handler)

@@ -15,8 +15,14 @@ import { targetFor } from './dependency-targets.mjs'
  * that project's linked worktree (`<worktree>.<name>.<domain>`) instead of its primary checkout.
  */
 export function dependencyUrl(dependency, settings = {}, worktree = undefined) {
-  const domain = normalizeDomain(typeof settings === 'number' ? undefined : settings.preferredDomain ?? settings.domain)
-  const host = worktree ? `${worktree}.${dependency.name}.${domain}` : `${dependency.name}.${domain}`
+  const domain = normalizeDomain(
+    typeof settings === 'number'
+      ? undefined
+      : (settings.preferredDomain ?? settings.domain),
+  )
+  const host = worktree
+    ? `${worktree}.${dependency.name}.${domain}`
+    : `${dependency.name}.${domain}`
   return `${publicOrigin(host, settings)}${dependency.healthPath ?? '/'}`
 }
 
@@ -28,8 +34,14 @@ export function dependencyOrigins(dependencies, settings = {}, targets = {}) {
   return Object.fromEntries(
     dependencies.map((dependency) => [
       dependency.name,
-      new URL(dependencyUrl(dependency, settings, targetFor(targets, dependency.name))).origin
-    ])
+      new URL(
+        dependencyUrl(
+          dependency,
+          settings,
+          targetFor(targets, dependency.name),
+        ),
+      ).origin,
+    ]),
   )
 }
 
@@ -39,7 +51,13 @@ export function dependencyOrigins(dependencies, settings = {}, targets = {}) {
  */
 export async function probeProjectDependencies(
   dependencies,
-  { config, proxyPort = 80, fetchImpl = fetchHealth, timeoutMs = 2_000, targets = {} } = {}
+  {
+    config,
+    proxyPort = 80,
+    fetchImpl = fetchHealth,
+    timeoutMs = 2_000,
+    targets = {},
+  } = {},
 ) {
   const probes = dependencies.map(async (dependency) => {
     const worktree = targetFor(targets, dependency.name)
@@ -49,11 +67,23 @@ export async function probeProjectDependencies(
       const response = await fetchImpl(request.url, {
         ...(request.headers ? { headers: request.headers } : {}),
         redirect: 'follow',
-        signal: AbortSignal.timeout(timeoutMs)
+        signal: AbortSignal.timeout(timeoutMs),
       })
-      return { dependency, worktree, url, ok: response.ok, detail: `HTTP ${response.status}` }
+      return {
+        dependency,
+        worktree,
+        url,
+        ok: response.ok,
+        detail: `HTTP ${response.status}`,
+      }
     } catch (error) {
-      return { dependency, worktree, url, ok: false, detail: error.cause?.message ?? error.message }
+      return {
+        dependency,
+        worktree,
+        url,
+        ok: false,
+        detail: error.cause?.message ?? error.message,
+      }
     }
   })
 
@@ -62,5 +92,7 @@ export async function probeProjectDependencies(
 
 /** Convenience used by preflight, where successful probes need no output. */
 export async function failedProjectDependencies(dependencies, options) {
-  return (await probeProjectDependencies(dependencies, options)).filter(({ ok }) => !ok)
+  return (await probeProjectDependencies(dependencies, options)).filter(
+    ({ ok }) => !ok,
+  )
 }

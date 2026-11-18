@@ -29,7 +29,10 @@ export const DEFAULT_BASELINE_PATHS = []
 
 /** One archive per clone, matching the one baseline database per clone. */
 export function baselineArchivePath(config, identity) {
-  return path.join(config.baselineDir, `${identity.repoName}${runtimeSuffix(config)}-data.tar.gz`)
+  return path.join(
+    config.baselineDir,
+    `${identity.repoName}${runtimeSuffix(config)}-data.tar.gz`,
+  )
 }
 
 function runtimeSuffix(config) {
@@ -52,21 +55,47 @@ export function checkoutNeedsData(repoRoot) {
 }
 
 /** Captures the baseline archive from `repoRoot`, replacing any previous one atomically. */
-export function captureDataBaseline(config, identity, repoRoot, paths = DEFAULT_BASELINE_PATHS) {
+export function captureDataBaseline(
+  config,
+  identity,
+  repoRoot,
+  paths = DEFAULT_BASELINE_PATHS,
+) {
   const archive = baselineArchivePath(config, identity)
   mkdirSync(path.dirname(archive), { recursive: true })
 
-  const present = paths.filter((relative) => existsSync(path.join(repoRoot, relative)))
-  if (present.length === 0) return { ok: false, error: `nothing to capture under ${repoRoot}/data` }
+  const present = paths.filter((relative) =>
+    existsSync(path.join(repoRoot, relative)),
+  )
+  if (present.length === 0)
+    return { ok: false, error: `nothing to capture under ${repoRoot}/data` }
 
   const staging = `${archive}.tmp`
-  const result = spawnSync('tar', ['-czf', staging, '--exclude=' + RESTORE_MARKER, '-C', repoRoot, ...present], { encoding: 'utf8' })
+  const result = spawnSync(
+    'tar',
+    [
+      '-czf',
+      staging,
+      '--exclude=' + RESTORE_MARKER,
+      '-C',
+      repoRoot,
+      ...present,
+    ],
+    { encoding: 'utf8' },
+  )
   if (result.status !== 0) {
-    return { ok: false, error: (result.stderr || result.error?.message || 'tar failed').trim() }
+    return {
+      ok: false,
+      error: (result.stderr || result.error?.message || 'tar failed').trim(),
+    }
   }
 
   const moved = spawnSync('mv', ['-f', staging, archive], { encoding: 'utf8' })
-  if (moved.status !== 0) return { ok: false, error: (moved.stderr || 'could not replace the archive').trim() }
+  if (moved.status !== 0)
+    return {
+      ok: false,
+      error: (moved.stderr || 'could not replace the archive').trim(),
+    }
 
   return { ok: true, archive, paths: present, bytes: statSync(archive).size }
 }
@@ -77,16 +106,26 @@ export function restoreDataBaseline(config, identity, repoRoot) {
   if (!existsSync(archive)) return { ok: false, missing: true }
 
   mkdirSync(path.join(repoRoot, 'data'), { recursive: true })
-  const result = spawnSync('tar', ['-xzf', archive, '-C', repoRoot, '--skip-old-files'], { encoding: 'utf8' })
+  const result = spawnSync(
+    'tar',
+    ['-xzf', archive, '-C', repoRoot, '--skip-old-files'],
+    { encoding: 'utf8' },
+  )
   if (result.status !== 0) {
-    return { ok: false, error: (result.stderr || result.error?.message || 'tar failed').trim() }
+    return {
+      ok: false,
+      error: (result.stderr || result.error?.message || 'tar failed').trim(),
+    }
   }
   // A failed or interrupted extraction must remain retryable. Record completion only after tar
   // succeeds; skip-old-files preserves checkout edits when a retry follows a partial restore.
   try {
     writeFileSync(path.join(repoRoot, RESTORE_MARKER), 'restored\n')
   } catch (error) {
-    return { ok: false, error: `could not record filesystem restore: ${error.message}` }
+    return {
+      ok: false,
+      error: `could not record filesystem restore: ${error.message}`,
+    }
   }
   return { ok: true, archive, bytes: statSync(archive).size }
 }

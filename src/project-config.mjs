@@ -31,7 +31,12 @@ const DEFAULTS = {
   /** Named port offsets within this checkout's block, in order. */
   ports: ['web', 'api'],
   /** Database backend, exact image tag, and optional database name. */
-  database: { engine: 'postgres', version: null, name: null, hostAccess: false },
+  database: {
+    engine: 'postgres',
+    version: null,
+    name: null,
+    hostAccess: false,
+  },
   /** The migration bookkeeping table, so `doctor` can report how far a database has been migrated. */
   migrationsTable: '_prisma_migrations',
   /** Repo-relative paths captured alongside the database so a new worktree starts usable. */
@@ -52,7 +57,7 @@ const DEFAULTS = {
    * Extra `devkit doctor` checks, for state only this project knows about (is my sidecar container
    * running the code I am editing?). Each returns `{ state, label, detail, fix }` or nothing.
    */
-  checks: []
+  checks: [],
 }
 
 function fail(message) {
@@ -61,13 +66,22 @@ function fail(message) {
 
 /** Validates loudly, because a typo here silently changes which ports or database a checkout uses. */
 function validate(config) {
-  if (config.name != null && typeof config.name !== 'string') fail('`name` must be a string')
-  if (!Array.isArray(config.ports) || config.ports.some((port) => typeof port !== 'string')) {
+  if (config.name != null && typeof config.name !== 'string')
+    fail('`name` must be a string')
+  if (
+    !Array.isArray(config.ports) ||
+    config.ports.some((port) => typeof port !== 'string')
+  ) {
     fail('`ports` must be an array of names, e.g. ["web", "api"]')
   }
   if (config.ports.length === 0) fail('`ports` must name at least one port')
-  if (new Set(config.ports).size !== config.ports.length) fail('`ports` must not repeat a name')
-  if (!config.database || typeof config.database !== 'object' || Array.isArray(config.database)) {
+  if (new Set(config.ports).size !== config.ports.length)
+    fail('`ports` must not repeat a name')
+  if (
+    !config.database ||
+    typeof config.database !== 'object' ||
+    Array.isArray(config.database)
+  ) {
     fail('`database` must be an object with an `engine` and optional `name`')
   }
   if (!['postgres', 'mariadb'].includes(config.database.engine)) {
@@ -75,62 +89,123 @@ function validate(config) {
   }
   if (
     config.database.version != null &&
-    (typeof config.database.version !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(config.database.version))
+    (typeof config.database.version !== 'string' ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(config.database.version))
   ) {
-    fail('`database.version` must be an exact Docker image tag containing only letters, numbers, dots, underscores, and hyphens')
+    fail(
+      '`database.version` must be an exact Docker image tag containing only letters, numbers, dots, underscores, and hyphens',
+    )
   }
-  if (config.database.name != null && !/^[a-z0-9_]+$/.test(config.database.name)) {
-    fail('`database.name` must contain only lowercase letters, numbers, and underscores')
+  if (
+    config.database.name != null &&
+    !/^[a-z0-9_]+$/.test(config.database.name)
+  ) {
+    fail(
+      '`database.name` must contain only lowercase letters, numbers, and underscores',
+    )
   }
   if (typeof config.database.hostAccess !== 'boolean') {
     fail('`database.hostAccess` must be a boolean')
   }
   if (config.database.hostAccess && config.ports.length >= 10) {
-    fail('`database.hostAccess` reserves the last port in a checkout block, so `ports` may contain at most 9 names')
+    fail(
+      '`database.hostAccess` reserves the last port in a checkout block, so `ports` may contain at most 9 names',
+    )
   }
-  if (config.migrationsTable != null && typeof config.migrationsTable !== 'string') {
-    fail('`migrationsTable` must be a string, or null for a project with no migrations')
+  if (
+    config.migrationsTable != null &&
+    typeof config.migrationsTable !== 'string'
+  ) {
+    fail(
+      '`migrationsTable` must be a string, or null for a project with no migrations',
+    )
   }
-  if (!Array.isArray(config.baselinePaths)) fail('`baselinePaths` must be an array of repo-relative paths')
-  if (!Array.isArray(config.worktreeFiles) || config.worktreeFiles.some((file) => typeof file !== 'string')) {
+  if (!Array.isArray(config.baselinePaths))
+    fail('`baselinePaths` must be an array of repo-relative paths')
+  if (
+    !Array.isArray(config.worktreeFiles) ||
+    config.worktreeFiles.some((file) => typeof file !== 'string')
+  ) {
     fail('`worktreeFiles` must be an array of repo-relative paths')
   }
   if (config.install != null) validateInstall(config.install)
-  if (!config.cleanup || typeof config.cleanup !== 'object' || Array.isArray(config.cleanup) ||
-      !Array.isArray(config.cleanup.volumes) || config.cleanup.volumes.some((name) =>
-        typeof name !== 'string' || !/^\{project\}[-_][a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name))) {
-    fail('`cleanup.volumes` must contain private volume names beginning with "{project}-" or "{project}_"')
+  if (
+    !config.cleanup ||
+    typeof config.cleanup !== 'object' ||
+    Array.isArray(config.cleanup) ||
+    !Array.isArray(config.cleanup.volumes) ||
+    config.cleanup.volumes.some(
+      (name) =>
+        typeof name !== 'string' ||
+        !/^\{project\}[-_][a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name),
+    )
+  ) {
+    fail(
+      '`cleanup.volumes` must contain private volume names beginning with "{project}-" or "{project}_"',
+    )
   }
-  if (!Array.isArray(config.dependencies)) fail('`dependencies` must be an array')
+  if (!Array.isArray(config.dependencies))
+    fail('`dependencies` must be an array')
   for (const dependency of config.dependencies) {
-    if (!dependency || typeof dependency !== 'object' || Array.isArray(dependency)) {
-      fail('each `dependencies` entry must be an object with a `name` and optional `healthPath`')
+    if (
+      !dependency ||
+      typeof dependency !== 'object' ||
+      Array.isArray(dependency)
+    ) {
+      fail(
+        'each `dependencies` entry must be an object with a `name` and optional `healthPath`',
+      )
     }
-    if (typeof dependency.name !== 'string' || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(dependency.name)) {
+    if (
+      typeof dependency.name !== 'string' ||
+      !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(dependency.name)
+    ) {
       fail('each dependency `name` must be a lowercase hostname label')
     }
-    if (dependency.healthPath != null && (typeof dependency.healthPath !== 'string' || !dependency.healthPath.startsWith('/'))) {
+    if (
+      dependency.healthPath != null &&
+      (typeof dependency.healthPath !== 'string' ||
+        !dependency.healthPath.startsWith('/'))
+    ) {
       fail('each dependency `healthPath` must start with "/"')
     }
   }
-  if (new Set(config.dependencies.map(({ name }) => name)).size !== config.dependencies.length) {
+  if (
+    new Set(config.dependencies.map(({ name }) => name)).size !==
+    config.dependencies.length
+  ) {
     fail('`dependencies` must not repeat a project name')
   }
   if (config.browser != null) {
-    if (!config.browser || typeof config.browser !== 'object' || Array.isArray(config.browser)) {
-      fail('`browser` must be an object with a `path` and optional `healthPath`, or null')
+    if (
+      !config.browser ||
+      typeof config.browser !== 'object' ||
+      Array.isArray(config.browser)
+    ) {
+      fail(
+        '`browser` must be an object with a `path` and optional `healthPath`, or null',
+      )
     }
-    if (typeof config.browser.path !== 'string' || !config.browser.path.startsWith('/')) {
+    if (
+      typeof config.browser.path !== 'string' ||
+      !config.browser.path.startsWith('/')
+    ) {
       fail('`browser.path` must start with "/"')
     }
-    if (config.browser.healthPath != null && (
-      typeof config.browser.healthPath !== 'string' || !config.browser.healthPath.startsWith('/')
-    )) {
+    if (
+      config.browser.healthPath != null &&
+      (typeof config.browser.healthPath !== 'string' ||
+        !config.browser.healthPath.startsWith('/'))
+    ) {
       fail('`browser.healthPath` must start with "/"')
     }
   }
-  if (typeof config.env !== 'function') fail('`env` must be a function returning an object')
-  if (!Array.isArray(config.checks) || config.checks.some((check) => typeof check !== 'function')) {
+  if (typeof config.env !== 'function')
+    fail('`env` must be a function returning an object')
+  if (
+    !Array.isArray(config.checks) ||
+    config.checks.some((check) => typeof check !== 'function')
+  ) {
     fail('`checks` must be an array of functions')
   }
   return config
@@ -141,10 +216,18 @@ function validateInstall(install) {
   if (!install || typeof install !== 'object' || Array.isArray(install)) {
     fail('`install` must be an object, or null')
   }
-  if (!Array.isArray(install.command) || install.command.length === 0 || install.command.some((part) => typeof part !== 'string' || !part)) {
+  if (
+    !Array.isArray(install.command) ||
+    install.command.length === 0 ||
+    install.command.some((part) => typeof part !== 'string' || !part)
+  ) {
     fail('`install.command` must be a non-empty array, e.g. ["npm", "ci"]')
   }
-  if (!Array.isArray(install.inputs) || install.inputs.length === 0 || install.inputs.some((input) => !isRepoRelativePath(input))) {
+  if (
+    !Array.isArray(install.inputs) ||
+    install.inputs.length === 0 ||
+    install.inputs.some((input) => !isRepoRelativePath(input))
+  ) {
     fail('`install.inputs` must be a non-empty array of repo-relative paths')
   }
   if (!isRepoRelativePath(install.output)) {
@@ -153,10 +236,12 @@ function validateInstall(install) {
 }
 
 function isRepoRelativePath(value) {
-  return typeof value === 'string'
-    && value.length > 0
-    && !path.isAbsolute(value)
-    && !value.split(/[\\/]/).includes('..')
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    !path.isAbsolute(value) &&
+    !value.split(/[\\/]/).includes('..')
+  )
 }
 
 /**
@@ -170,10 +255,13 @@ export async function loadProjectConfig(repoRoot) {
 
   const module = await import(pathToFileURL(configPath).href)
   const provided = module.default
-  if (!provided || typeof provided !== 'object') fail('must `export default` an object')
+  if (!provided || typeof provided !== 'object')
+    fail('must `export default` an object')
   if (
     provided.database !== undefined &&
-    (!provided.database || typeof provided.database !== 'object' || Array.isArray(provided.database))
+    (!provided.database ||
+      typeof provided.database !== 'object' ||
+      Array.isArray(provided.database))
   ) {
     fail('`database` must be an object with an `engine` and optional `name`')
   }
@@ -182,6 +270,6 @@ export async function loadProjectConfig(repoRoot) {
     ...DEFAULTS,
     ...provided,
     database: { ...DEFAULTS.database, ...provided.database },
-    configPath
+    configPath,
   })
 }

@@ -21,7 +21,9 @@
     "onUri"
   ],
   "main": "./extension.js",
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "files": [
     "extension.js",
     "url.cjs",

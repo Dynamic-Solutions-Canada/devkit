@@ -13,19 +13,33 @@
  * name never inherits someone else's choice. Archive cleanup removes it.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 
 import { sanitizeLabel } from './checkout-identity.mjs'
 
 /** The unambiguous per-checkout key: the hostname's checkout part, without any domain. */
 function checkoutKey(identity) {
-  return identity.isPrimary ? identity.repoName : `${identity.worktreeName}.${identity.repoName}`
+  return identity.isPrimary
+    ? identity.repoName
+    : `${identity.worktreeName}.${identity.repoName}`
 }
 
 /** Where this checkout's dependency targets are stored. */
 export function dependencyTargetsPath(config, identity) {
-  return path.join(config.configDir, 'dependency-targets', `${checkoutKey(identity)}.json`)
+  return path.join(
+    config.configDir,
+    'dependency-targets',
+    `${checkoutKey(identity)}.json`,
+  )
 }
 
 /**
@@ -33,7 +47,9 @@ export function dependencyTargetsPath(config, identity) {
  * hostname (`bulk-email-pickup-limits` in `bulk-email-pickup-limits.platform.localhost`).
  */
 export function isWorktreeLabel(value) {
-  return typeof value === 'string' && value !== '' && sanitizeLabel(value) === value
+  return (
+    typeof value === 'string' && value !== '' && sanitizeLabel(value) === value
+  )
 }
 
 /** The worktree selected for `name` in `targets`, ignoring inherited object properties. */
@@ -54,7 +70,10 @@ export function readDependencyTargets(config, identity) {
   const file = dependencyTargetsPath(config, identity)
   if (!existsSync(file)) return {}
 
-  const damaged = () => new Error(`devkit: ${file} is damaged; fix it, or delete it to use primary checkouts`)
+  const damaged = () =>
+    new Error(
+      `devkit: ${file} is damaged; fix it, or delete it to use primary checkouts`,
+    )
   let stored
   try {
     stored = JSON.parse(readFileSync(file, 'utf8'))
@@ -62,14 +81,21 @@ export function readDependencyTargets(config, identity) {
     throw damaged()
   }
   const dependencies = stored?.dependencies
-  const valid = stored && typeof stored === 'object' && typeof stored.checkout === 'string'
-    && dependencies && typeof dependencies === 'object' && !Array.isArray(dependencies)
-    && Object.values(dependencies).every(isWorktreeLabel)
+  const valid =
+    stored &&
+    typeof stored === 'object' &&
+    typeof stored.checkout === 'string' &&
+    dependencies &&
+    typeof dependencies === 'object' &&
+    !Array.isArray(dependencies) &&
+    Object.values(dependencies).every(isWorktreeLabel)
   if (!valid) throw damaged()
 
   // A moved worktree, or a new one reusing a removed worktree's name, must decide again explicitly.
   if (path.resolve(stored.checkout) !== path.resolve(identity.toplevel)) {
-    throw new ForeignDependencyTargetsError(`devkit: ${file} holds dependency selections recorded for ${stored.checkout}, not this checkout (${identity.toplevel}); choose again with \`devkit use <dependency> <worktree>\`, or use primary checkouts with \`devkit use <dependency> --primary\``)
+    throw new ForeignDependencyTargetsError(
+      `devkit: ${file} holds dependency selections recorded for ${stored.checkout}, not this checkout (${identity.toplevel}); choose again with \`devkit use <dependency> <worktree>\`, or use primary checkouts with \`devkit use <dependency> --primary\``,
+    )
   }
   return Object.fromEntries(Object.entries(dependencies))
 }
@@ -80,7 +106,9 @@ export function readDependencyTargets(config, identity) {
  */
 export function declaredDependencyTargets(targets, dependencies) {
   const names = new Set(dependencies.map(({ name }) => name))
-  return Object.fromEntries(Object.entries(targets).filter(([name]) => names.has(name)))
+  return Object.fromEntries(
+    Object.entries(targets).filter(([name]) => names.has(name)),
+  )
 }
 
 /**
@@ -89,19 +117,36 @@ export function declaredDependencyTargets(targets, dependencies) {
  * an entry left behind by a dependency the project has since removed can still be cleared.
  * Writes atomically and deletes the file once no targets remain. Returns the resulting targets.
  */
-export function setDependencyTarget(config, identity, dependencies, name, worktree) {
+export function setDependencyTarget(
+  config,
+  identity,
+  dependencies,
+  name,
+  worktree,
+) {
   const declared = dependencies.some((dependency) => dependency.name === name)
   // Choosing again here is the explicit decision a moved or reused checkout's selection needs.
   const targets = readOwnTargets(config, identity)
-  if (worktree === null && !declared && targetFor(targets, name) === undefined) {
-    throw new Error(`devkit: no worktree is selected for ${name}, and it is not a dependency of this project`)
+  if (
+    worktree === null &&
+    !declared &&
+    targetFor(targets, name) === undefined
+  ) {
+    throw new Error(
+      `devkit: no worktree is selected for ${name}, and it is not a dependency of this project`,
+    )
   }
   if (worktree !== null && !declared) {
-    const names = dependencies.map((dependency) => dependency.name).join(', ') || '(none)'
-    throw new Error(`devkit: ${name} is not a dependency of this project; declared: ${names}`)
+    const names =
+      dependencies.map((dependency) => dependency.name).join(', ') || '(none)'
+    throw new Error(
+      `devkit: ${name} is not a dependency of this project; declared: ${names}`,
+    )
   }
   if (worktree !== null && !isWorktreeLabel(worktree)) {
-    throw new Error(`devkit: ${JSON.stringify(worktree)} is not a worktree label; use the first part of its hostname, e.g. my-branch in my-branch.${name}.localhost`)
+    throw new Error(
+      `devkit: ${JSON.stringify(worktree)} is not a worktree label; use the first part of its hostname, e.g. my-branch in my-branch.${name}.localhost`,
+    )
   }
 
   if (worktree === null) delete targets[name]
@@ -116,7 +161,10 @@ export function setDependencyTarget(config, identity, dependencies, name, worktr
   // Write then rename, so a concurrent dev start never reads a half-written file.
   mkdirSync(path.dirname(file), { recursive: true })
   const temporary = `${file}.${process.pid}.tmp`
-  writeFileSync(temporary, `${JSON.stringify({ checkout: identity.toplevel, dependencies: targets }, null, 2)}\n`)
+  writeFileSync(
+    temporary,
+    `${JSON.stringify({ checkout: identity.toplevel, dependencies: targets }, null, 2)}\n`,
+  )
   renameSync(temporary, file)
   return targets
 }
@@ -162,10 +210,16 @@ function ownerAlive(pid) {
  * files their dev runners write: `[{ worktree, checkout }]`, where `checkout` is the worktree's
  * path, or null for a route written by a devkit that did not record it yet.
  */
-export function runningDependencyWorktrees(config, name, { alive = ownerAlive } = {}) {
+export function runningDependencyWorktrees(
+  config,
+  name,
+  { alive = ownerAlive } = {},
+) {
   let files
   try {
-    files = readdirSync(config.routesDir).filter((file) => file.endsWith('.yml'))
+    files = readdirSync(config.routesDir).filter((file) =>
+      file.endsWith('.yml'),
+    )
   } catch {
     return []
   }
@@ -178,30 +232,51 @@ export function runningDependencyWorktrees(config, name, { alive = ownerAlive } 
     } catch {
       continue
     }
-    const pid = Number.parseInt(contents.match(/^# Devkit checkout owner pid: (\d+)$/m)?.[1] ?? '', 10)
+    const pid = Number.parseInt(
+      contents.match(/^# Devkit checkout owner pid: (\d+)$/m)?.[1] ?? '',
+      10,
+    )
     if (!alive(pid)) continue
 
     let checkout = null
     try {
-      checkout = JSON.parse(contents.match(/^# Devkit checkout path: (.+)$/m)?.[1] ?? 'null')
-    } catch { /* A malformed comment only loses the path, not the route. */ }
+      checkout = JSON.parse(
+        contents.match(/^# Devkit checkout path: (.+)$/m)?.[1] ?? 'null',
+      )
+    } catch {
+      /* A malformed comment only loses the path, not the route. */
+    }
 
     for (const [, host] of contents.matchAll(/Host\(`([^`]+)`\)/g)) {
       const [label, dependency] = host.split('.')
-      if (dependency === name && isWorktreeLabel(label) && host.split('.').length > 2 && !found.has(label)) {
-        found.set(label, { worktree: label, checkout: typeof checkout === 'string' ? checkout : null })
+      if (
+        dependency === name &&
+        isWorktreeLabel(label) &&
+        host.split('.').length > 2 &&
+        !found.has(label)
+      ) {
+        found.set(label, {
+          worktree: label,
+          checkout: typeof checkout === 'string' ? checkout : null,
+        })
       }
     }
   }
-  return [...found.values()].sort((a, b) => a.worktree.localeCompare(b.worktree))
+  return [...found.values()].sort((a, b) =>
+    a.worktree.localeCompare(b.worktree),
+  )
 }
 
 /** The branch checked out at `checkout`, or null when it cannot be read. */
 export function checkoutBranch(checkout) {
   try {
-    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd: checkout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']
-    }).trim() || null
+    return (
+      execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: checkout,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null
+    )
   } catch {
     return null
   }
@@ -223,15 +298,32 @@ export function describeWorktree(running, branchOf = checkoutBranch) {
  * caught now and the selected checkout's path and branch can be shown. Throws on invalid input.
  */
 export async function useDependencyTargets({
-  config, identity, project, args, log = console.log, probe, running = runningDependencyWorktrees,
-  branchOf = checkoutBranch
+  config,
+  identity,
+  project,
+  args,
+  log = console.log,
+  probe,
+  running = runningDependencyWorktrees,
+  branchOf = checkoutBranch,
 }) {
-  const usage = 'usage: devkit use [<dependency> <worktree> | <dependency> --primary]'
-  if (args.length === 1 || args.length > 2 || args.some((arg, index) => arg.startsWith('-') && !(index === 1 && arg === '--primary'))) {
+  const usage =
+    'usage: devkit use [<dependency> <worktree> | <dependency> --primary]'
+  if (
+    args.length === 1 ||
+    args.length > 2 ||
+    args.some(
+      (arg, index) =>
+        arg.startsWith('-') && !(index === 1 && arg === '--primary'),
+    )
+  ) {
     throw new Error(usage)
   }
 
-  const before = args.length === 2 ? readOwnTargets(config, identity) : readDependencyTargets(config, identity)
+  const before =
+    args.length === 2
+      ? readOwnTargets(config, identity)
+      : readDependencyTargets(config, identity)
   let changed = false
   if (args.length === 2) {
     const [name, choice] = args
@@ -239,12 +331,21 @@ export async function useDependencyTargets({
     if (worktree !== null && isWorktreeLabel(worktree)) {
       const available = running(config, name)
       if (!available.some((entry) => entry.worktree === worktree)) {
-        const names = available.map((entry) => entry.worktree).join(', ') || 'none'
-        throw new Error(`devkit: no running checkout answers as ${worktree}.${name}; running ${name} worktrees: ${names}. Start that worktree's dev server, then run this again.`)
+        const names =
+          available.map((entry) => entry.worktree).join(', ') || 'none'
+        throw new Error(
+          `devkit: no running checkout answers as ${worktree}.${name}; running ${name} worktrees: ${names}. Start that worktree's dev server, then run this again.`,
+        )
       }
     }
     const foreign = hasForeignTargets(config, identity)
-    const after = setDependencyTarget(config, identity, project.dependencies, name, worktree)
+    const after = setDependencyTarget(
+      config,
+      identity,
+      project.dependencies,
+      name,
+      worktree,
+    )
     changed = foreign || targetFor(before, name) !== targetFor(after, name)
   }
 
@@ -255,18 +356,36 @@ export async function useDependencyTargets({
   }
 
   const declared = declaredDependencyTargets(targets, project.dependencies)
-  for (const result of await probe(project.dependencies, { config, targets: declared })) {
+  for (const result of await probe(project.dependencies, {
+    config,
+    targets: declared,
+  })) {
     const name = result.dependency.name
     const where = result.worktree
-      ? `${result.worktree} worktree (${describeWorktree(running(config, name).find((entry) => entry.worktree === result.worktree), branchOf)})`
+      ? `${result.worktree} worktree (${describeWorktree(
+          running(config, name).find(
+            (entry) => entry.worktree === result.worktree,
+          ),
+          branchOf,
+        )})`
       : 'primary checkout'
     const state = result.ok ? 'answering' : `not answering: ${result.detail}`
-    log(`  ${result.ok ? '+' : 'x'} ${name.padEnd(18)} ${where}  ${result.url} (${state})`)
+    log(
+      `  ${result.ok ? '+' : 'x'} ${name.padEnd(18)} ${where}  ${result.url} (${state})`,
+    )
   }
-  for (const name of Object.keys(targets).filter((name) => !Object.hasOwn(declared, name))) {
-    log(`  ! ${name.padEnd(18)} no longer declared by this project; \`devkit use ${name} --primary\` clears it`)
+  for (const name of Object.keys(targets).filter(
+    (name) => !Object.hasOwn(declared, name),
+  )) {
+    log(
+      `  ! ${name.padEnd(18)} no longer declared by this project; \`devkit use ${name} --primary\` clears it`,
+    )
   }
   if (args.length === 2) {
-    log(changed ? '\n  Restart this checkout\'s dev server to apply the change.' : '\n  Nothing changed.')
+    log(
+      changed
+        ? "\n  Restart this checkout's dev server to apply the change."
+        : '\n  Nothing changed.',
+    )
   }
 }

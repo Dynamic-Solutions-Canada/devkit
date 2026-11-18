@@ -7,14 +7,14 @@ import { selectDatabaseRuntime } from '../src/database-runtime.mjs'
 const host = {
   infraDir: '/devkit/infra',
   postgres: { user: 'postgres', password: 'pg-secret' },
-  mariadb: { user: 'root', password: 'maria-secret' }
+  mariadb: { user: 'root', password: 'maria-secret' },
 }
 
 test('a checkout owns its database runtime and uses the fixed container address', () => {
   const selected = selectDatabaseRuntime(
     host,
     { database: { engine: 'mariadb', version: '10.2.44', hostAccess: false } },
-    { composeProject: 'app-wt-issue-42' }
+    { composeProject: 'app-wt-issue-42' },
   )
 
   assert.deepEqual(selected.databaseRuntime, {
@@ -25,7 +25,7 @@ test('a checkout owns its database runtime and uses the fixed container address'
     service: 'database',
     composeFile: '/devkit/infra/mariadb.yml',
     volume: 'app-wt-issue-42-database',
-    hostPort: null
+    hostPort: null,
   })
   assert.equal(selected.mariadb.host, 'database')
   assert.equal(selected.mariadb.port, 3306)
@@ -36,7 +36,7 @@ test('an omitted version uses the engine default', () => {
   const selected = selectDatabaseRuntime(
     host,
     { database: { engine: 'postgres', hostAccess: false } },
-    { composeProject: 'app' }
+    { composeProject: 'app' },
   )
   assert.equal(selected.databaseRuntime.version, '16-bookworm')
   assert.equal(selected.postgres.port, 5432)
@@ -47,7 +47,7 @@ test('host access records the derived loopback port', () => {
     host,
     { database: { engine: 'postgres', hostAccess: true } },
     { composeProject: 'app' },
-    { hostPort: 20009 }
+    { hostPort: 20009 },
   )
   assert.equal(selected.databaseRuntime.hostPort, 20009)
 })
@@ -56,7 +56,7 @@ test('host access defaults to the reserved final port in the checkout block', ()
   const selected = selectDatabaseRuntime(
     host,
     { database: { engine: 'postgres', hostAccess: true }, ports: ['web'] },
-    { composeProject: 'app', slug: 'app' }
+    { composeProject: 'app', slug: 'app' },
   )
   assert.equal(selected.databaseRuntime.hostPort % 10, 9)
 })

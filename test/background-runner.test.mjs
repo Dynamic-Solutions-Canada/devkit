@@ -14,27 +14,39 @@ function fixture(t) {
   const child = new EventEmitter()
   child.pid = 123
   child.connected = true
-  child.disconnect = () => { child.connected = false }
-  child.unref = () => { child.unreferenced = true }
-  child.kill = (signal) => { child.signal = signal }
+  child.disconnect = () => {
+    child.connected = false
+  }
+  child.unref = () => {
+    child.unreferenced = true
+  }
+  child.kill = (signal) => {
+    child.signal = signal
+  }
   const parent = Object.assign(new EventEmitter(), {
     execPath: process.execPath,
     execArgv: [],
     argv: ['node', '/runner.mjs', '--background', '--open=native'],
     env: {},
-    cwd: () => root
+    cwd: () => root,
   })
   return {
-    child, parent,
+    child,
+    parent,
     launch(startupTimeoutMs = 1000) {
-      return launchBackgroundRunner({ configDir: root }, { slug: 'app' }, {
-        processTarget: parent, startupTimeoutMs,
-        spawnImpl(_command, args) {
-          assert.deepEqual(args, ['/runner.mjs', '--open=native'])
-          return child
-        }
-      })
-    }
+      return launchBackgroundRunner(
+        { configDir: root },
+        { slug: 'app' },
+        {
+          processTarget: parent,
+          startupTimeoutMs,
+          spawnImpl(_command, args) {
+            assert.deepEqual(args, ['/runner.mjs', '--open=native'])
+            return child
+          },
+        },
+      )
+    },
   }
 }
 

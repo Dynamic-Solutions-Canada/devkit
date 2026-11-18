@@ -27,11 +27,12 @@ async function handleUri(uri) {
  */
 async function publishWindowCallback(context) {
   const callback = await vscode.env.asExternalUri(
-    vscode.Uri.parse(`${vscode.env.uriScheme}://${extensionId}/open`)
+    vscode.Uri.parse(`${vscode.env.uriScheme}://${extensionId}/open`),
   )
   const environment = context.environmentVariableCollection
   environment.persistent = false
-  environment.description = 'Routes Devkit browser tabs back to this VS Code window.'
+  environment.description =
+    'Routes Devkit browser tabs back to this VS Code window.'
   environment.replace(browserUriVariable, callback.toString())
 }
 

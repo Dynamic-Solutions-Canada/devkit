@@ -13,14 +13,24 @@
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 
-import { deriveCheckoutIdentity, readGitCheckout } from './checkout-identity.mjs'
+import {
+  deriveCheckoutIdentity,
+  readGitCheckout,
+} from './checkout-identity.mjs'
 import { devkitConfig } from './config.mjs'
 import { loadProjectConfig } from './project-config.mjs'
 
 function validateRelativePath(value) {
   const normalized = path.normalize(value)
-  if (!value || path.isAbsolute(value) || normalized === '..' || normalized.startsWith(`..${path.sep}`)) {
-    throw new Error(`devkit: worktreeFiles entry must stay inside the checkout: ${JSON.stringify(value)}`)
+  if (
+    !value ||
+    path.isAbsolute(value) ||
+    normalized === '..' ||
+    normalized.startsWith(`..${path.sep}`)
+  ) {
+    throw new Error(
+      `devkit: worktreeFiles entry must stay inside the checkout: ${JSON.stringify(value)}`,
+    )
   }
   return normalized
 }
@@ -28,9 +38,12 @@ function validateRelativePath(value) {
 /** Copy configured paths using already-loaded git/project state. Exported for focused tests. */
 export function copyWorktreeFiles({ checkout, project }) {
   const identity = deriveCheckoutIdentity(checkout)
-  if (identity.isPrimary || project.worktreeFiles.length === 0) return { copied: [], missing: [] }
+  if (identity.isPrimary || project.worktreeFiles.length === 0)
+    return { copied: [], missing: [] }
 
-  const primaryRoot = path.dirname(path.resolve(checkout.root ?? checkout.toplevel, checkout.gitCommonDir))
+  const primaryRoot = path.dirname(
+    path.resolve(checkout.root ?? checkout.toplevel, checkout.gitCommonDir),
+  )
   const copied = []
   const missing = []
 
@@ -44,7 +57,12 @@ export function copyWorktreeFiles({ checkout, project }) {
       continue
     }
     mkdirSync(path.dirname(destination), { recursive: true })
-    cpSync(source, destination, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true })
+    cpSync(source, destination, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+    })
     copied.push(configuredPath)
   }
 

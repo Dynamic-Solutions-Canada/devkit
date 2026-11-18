@@ -13,11 +13,31 @@
  * Counterparts: `infra/compose.yml` (the lazily managed proxy) and each project's
  * `devkit.config.mjs` (which supplies the env its servers read).
  */
-import { isBackgroundChild, launchBackgroundRunner, reportBackgroundReady } from './background-runner.mjs'
-import { acquireCheckoutRunner, stopCheckoutRunner } from './checkout-runner.mjs'
-import { browserOpenTarget, checkoutBrowserUrls, scheduleBrowserOpen, validateBrowserTarget } from './browser.mjs'
-import { checkoutIdentity, checkoutPorts, readGitCheckout } from './checkout-identity.mjs'
-import { checkoutDatabase, checkoutHostDatabase, devkitConfig } from './config.mjs'
+import {
+  isBackgroundChild,
+  launchBackgroundRunner,
+  reportBackgroundReady,
+} from './background-runner.mjs'
+import {
+  acquireCheckoutRunner,
+  stopCheckoutRunner,
+} from './checkout-runner.mjs'
+import {
+  browserOpenTarget,
+  checkoutBrowserUrls,
+  scheduleBrowserOpen,
+  validateBrowserTarget,
+} from './browser.mjs'
+import {
+  checkoutIdentity,
+  checkoutPorts,
+  readGitCheckout,
+} from './checkout-identity.mjs'
+import {
+  checkoutDatabase,
+  checkoutHostDatabase,
+  devkitConfig,
+} from './config.mjs'
 import { ensureCheckoutInstall } from './checkout-install.mjs'
 import {
   appliedMigrationCount,
@@ -25,22 +45,42 @@ import {
   databaseBaselineLabel,
   ensureCheckoutDatabase,
   resolveDatabaseIdentity,
-  snapshotBaseline
+  snapshotBaseline,
 } from './database.mjs'
-import { baselineAgeDays, captureDataBaseline, checkoutNeedsData, restoreDataBaseline } from './data-baseline.mjs'
-import { databaseCompose, composeUp, mariadbSql, postgresSql, probeDocker } from './docker.mjs'
+import {
+  baselineAgeDays,
+  captureDataBaseline,
+  checkoutNeedsData,
+  restoreDataBaseline,
+} from './data-baseline.mjs'
+import {
+  databaseCompose,
+  composeUp,
+  mariadbSql,
+  postgresSql,
+  probeDocker,
+} from './docker.mjs'
 import { selectDatabaseRuntime } from './database-runtime.mjs'
 import { loadProjectConfig } from './project-config.mjs'
-import { dependencyOrigins, failedProjectDependencies } from './project-dependencies.mjs'
+import {
+  dependencyOrigins,
+  failedProjectDependencies,
+} from './project-dependencies.mjs'
 import {
   declaredDependencyTargets,
   describeWorktree,
   readDependencyTargets,
-  runningDependencyWorktrees
+  runningDependencyWorktrees,
 } from './dependency-targets.mjs'
 import { acquireProxy, ensureProxy } from './proxy.mjs'
 import { copyWorktreeFiles } from './worktree-files.mjs'
-import { checkoutHostnames, checkoutOrigins, containerProxyAddress, publicOrigin, proxyRequest } from './host-routing.mjs'
+import {
+  checkoutHostnames,
+  checkoutOrigins,
+  containerProxyAddress,
+  publicOrigin,
+  proxyRequest,
+} from './host-routing.mjs'
 import { assertProjectRuntime } from './project-runtime.mjs'
 
 /** Fails the run with a message that names the fix, rather than a stack trace. */
@@ -67,7 +107,7 @@ export async function preflight({
   checkDependencies = true,
   teardown = process.argv.includes('--down'),
   openBrowser,
-  background = process.argv.includes('--background')
+  background = process.argv.includes('--background'),
 }) {
   const hostConfig = devkitConfig()
   if (!hostConfig) return null
@@ -82,7 +122,9 @@ export async function preflight({
   }
   if (background && !backgroundChild) {
     const launched = await launchBackgroundRunner(hostConfig, checkout)
-    log?.(`[devkit] background runner started (PID ${launched.pid}); log: ${launched.logPath}`)
+    log?.(
+      `[devkit] background runner started (PID ${launched.pid}); log: ${launched.logPath}`,
+    )
     process.exit(0)
   }
 
@@ -90,7 +132,13 @@ export async function preflight({
   const runner = acquireCheckoutRunner(hostConfig, checkout)
   try {
     const result = await prepareDevState({
-      hostConfig, checkout, repoRoot, log, checkDependencies, teardown, openBrowser
+      hostConfig,
+      checkout,
+      repoRoot,
+      log,
+      checkDependencies,
+      teardown,
+      openBrowser,
     })
     result.runner = runner
     if (backgroundChild) reportBackgroundReady()
@@ -103,31 +151,49 @@ export async function preflight({
 
 /** Repairs the checkout's preconditions only after its runner has reserved exclusive ownership. */
 async function prepareDevState({
-  hostConfig, checkout, repoRoot, log, checkDependencies, teardown, openBrowser
+  hostConfig,
+  checkout,
+  repoRoot,
+  log,
+  checkDependencies,
+  teardown,
+  openBrowser,
 }) {
   // Preserve Devkit's off switch and keep teardown independent of opening requests.
   const browserTarget = teardown
     ? false
-    : validateBrowserTarget(openBrowser === undefined ? browserOpenTarget() : openBrowser)
+    : validateBrowserTarget(
+        openBrowser === undefined ? browserOpenTarget() : openBrowser,
+      )
 
   const project = await loadProjectConfig(repoRoot)
   const config = selectDatabaseRuntime(hostConfig, project, checkout)
   const identity = resolveDatabaseIdentity(checkout, project)
   const ports = checkoutPorts(identity, project.ports)
   const lines = []
-  const targets = dependencyTargets(config, identity, project, { teardown, lines })
+  const targets = dependencyTargets(config, identity, project, {
+    teardown,
+    lines,
+  })
 
   // Callers that consume one of these files before preflight can invoke inheritWorktreeFiles()
   // early. Everyone else still gets the guarantee here; copying twice is an idempotent no-op.
-  const inherited = copyWorktreeFiles({ checkout: readGitCheckout(repoRoot), project })
-  for (const file of inherited.copied) lines.push(`${file} inherited from the primary checkout`)
-  for (const file of inherited.missing) lines.push(`${file} missing here and in the primary checkout`)
+  const inherited = copyWorktreeFiles({
+    checkout: readGitCheckout(repoRoot),
+    project,
+  })
+  for (const file of inherited.copied)
+    lines.push(`${file} inherited from the primary checkout`)
+  for (const file of inherited.missing)
+    lines.push(`${file} missing here and in the primary checkout`)
 
   if (!teardown) {
     const installation = ensureCheckoutInstall({ repoRoot, project })
     if (installation.installed) {
       lines.push(`${project.install.output} installed for this checkout`)
-      log?.(`[devkit] checkout-local dependencies ready (${project.install.command.join(' ')})`)
+      log?.(
+        `[devkit] checkout-local dependencies ready (${project.install.command.join(' ')})`,
+      )
     }
   }
 
@@ -138,35 +204,53 @@ async function prepareDevState({
     if (!ensureDatabaseInfra(config)) {
       throw new PreflightError(
         `the checkout ${project.database.engine} database could not be started`,
-        'run `devkit bootstrap` to (re)install it, or `devkit doctor` to see what is wrong'
+        'run `devkit bootstrap` to (re)install it, or `devkit doctor` to see what is wrong',
       )
     }
     // A stopped or pre-upgrade proxy must be repaired before named dependency health checks.
     // Their routes remain owned by their independent runners; no new checkout route is leased yet.
     if (checkDependencies && project.dependencies.length > 0) {
-      if (!ensureProxy(config)) throw new PreflightError('the shared loopback proxy could not be started', 'run `devkit doctor`')
+      if (!ensureProxy(config))
+        throw new PreflightError(
+          'the shared loopback proxy could not be started',
+          'run `devkit doctor`',
+        )
       await requireProjectDependencies(config, project, targets)
     }
     waitForDatabase(config, project)
 
     const provisioned = ensureCheckoutDatabase(config, identity, project)
-    if (provisioned.error) throw new PreflightError(`could not create database ${provisioned.name}: ${provisioned.error}`)
+    if (provisioned.error)
+      throw new PreflightError(
+        `could not create database ${provisioned.name}: ${provisioned.error}`,
+      )
     if (provisioned.created) {
       lines.push(
         provisioned.sourced === 'baseline'
           ? `database ${provisioned.name} cloned from ${provisioned.baseline ?? databaseBaselineLabel(config, identity, project)}`
-          : `database ${provisioned.name} created EMPTY (no baseline yet -- run \`devkit snapshot\` from the primary checkout)`
+          : `database ${provisioned.name} created EMPTY (no baseline yet -- run \`devkit snapshot\` from the primary checkout)`,
       )
-      if (provisioned.warning) lines.push(`baseline clone failed, fell back to empty: ${provisioned.warning}`)
+      if (provisioned.warning)
+        lines.push(
+          `baseline clone failed, fell back to empty: ${provisioned.warning}`,
+        )
     }
   }
 
   // Only when the project actually seeds files: a project with no `baselinePaths` has nothing on
   // disk to restore, and probing for it would report a missing archive it never wanted.
-  if (!teardown && project.baselinePaths.length > 0 && checkoutNeedsData(repoRoot)) {
+  if (
+    !teardown &&
+    project.baselinePaths.length > 0 &&
+    checkoutNeedsData(repoRoot)
+  ) {
     const restored = restoreDataBaseline(config, identity, repoRoot)
-    if (restored.ok) lines.push(`data/ restored from baseline (${formatBytes(restored.bytes)})`)
-    else if (!restored.missing) lines.push(`data/ could not be restored: ${restored.error}`)
+    if (restored.ok)
+      lines.push(
+        `data/ restored from baseline (${formatBytes(restored.bytes)})`,
+      )
+    else if (!restored.missing)
+      lines.push(`data/ could not be restored: ${restored.error}`)
   }
 
   const age = teardown
@@ -175,7 +259,9 @@ async function prepareDevState({
       ? baselineAgeDays(config, identity)
       : databaseBaselineAgeDays(config, identity, project)
   if (age !== null && age > config.baselineMaxAgeDays) {
-    lines.push(`baseline is ${Math.floor(age)} days old -- \`devkit snapshot\` refreshes it`)
+    lines.push(
+      `baseline is ${Math.floor(age)} days old -- \`devkit snapshot\` refreshes it`,
+    )
   }
 
   const url = publicOrigin(identity.hostname, config)
@@ -193,7 +279,7 @@ async function prepareDevState({
     databaseUrl,
     dependencyOrigins: dependencyOrigins(project.dependencies, config, targets),
     proxyAddress: containerProxyAddress(config),
-    configDir: config.configDir
+    configDir: config.configDir,
   }
 
   const result = {
@@ -205,26 +291,37 @@ async function prepareDevState({
     /** Applied-migration count before the project migrates, so a caller can detect a schema move. */
     migrationsBefore: teardown
       ? null
-      : appliedMigrationCount(config, identity.databaseName, project.migrationsTable, project),
-    env: { ...baseEnv(context), ...project.env(context) }
+      : appliedMigrationCount(
+          config,
+          identity.databaseName,
+          project.migrationsTable,
+          project,
+        ),
+    env: { ...baseEnv(context), ...project.env(context) },
   }
 
   if (!teardown) {
     if (!acquireProxy(config, identity, ports.web)) {
       throw new PreflightError(
         `the shared dev proxy at ${config.infraDir} could not be started`,
-        'run `devkit bootstrap` to (re)install it, or `devkit doctor` to see what is wrong'
+        'run `devkit bootstrap` to (re)install it, or `devkit doctor` to see what is wrong',
       )
     }
-    log?.(`[devkit] proxy and checkout database ready (${project.database.engine}:${config.databaseRuntime.version})`)
-    for (const alternate of context.urls.slice(1)) log?.(`[devkit] alternate URL: ${alternate}`)
+    log?.(
+      `[devkit] proxy and checkout database ready (${project.database.engine}:${config.databaseRuntime.version})`,
+    )
+    for (const alternate of context.urls.slice(1))
+      log?.(`[devkit] alternate URL: ${alternate}`)
   }
 
   // Teardown must not schedule a fresh browser tab while it removes the route and containers.
   if (browserTarget && project.browser && checkDependencies && !teardown) {
     const browser = checkoutBrowserUrls(url, project.browser)
     const health = proxyRequest(browser.healthUrl, config)
-    scheduleBrowserOpen(browser.openUrl, health.url, { target: browserTarget, headers: health.headers })
+    scheduleBrowserOpen(browser.openUrl, health.url, {
+      target: browserTarget,
+      headers: health.headers,
+    })
   }
 
   return result
@@ -238,40 +335,69 @@ async function prepareDevState({
 function dependencyTargets(config, identity, project, { teardown, lines }) {
   let targets
   try {
-    targets = declaredDependencyTargets(readDependencyTargets(config, identity), project.dependencies)
+    targets = declaredDependencyTargets(
+      readDependencyTargets(config, identity),
+      project.dependencies,
+    )
   } catch (error) {
     if (teardown) {
-      lines.push(`${error.message.replace(/^devkit: /, '')} (ignored while stopping)`)
+      lines.push(
+        `${error.message.replace(/^devkit: /, '')} (ignored while stopping)`,
+      )
       return {}
     }
-    throw new PreflightError(error.message.replace(/^devkit: /, ''), 'fix or delete that file, then run this project again')
+    throw new PreflightError(
+      error.message.replace(/^devkit: /, ''),
+      'fix or delete that file, then run this project again',
+    )
   }
   if (teardown) return targets
 
   for (const [name, worktree] of Object.entries(targets)) {
-    const running = runningDependencyWorktrees(config, name).find((entry) => entry.worktree === worktree)
+    const running = runningDependencyWorktrees(config, name).find(
+      (entry) => entry.worktree === worktree,
+    )
     const where = running ? describeWorktree(running) : 'not running yet'
-    lines.push(`${name} uses its ${worktree} worktree (${where}); \`devkit use ${name} --primary\` reverts`)
+    lines.push(
+      `${name} uses its ${worktree} worktree (${where}); \`devkit use ${name} --primary\` reverts`,
+    )
   }
   return targets
 }
 
 /** Verifies declared applications are alive but deliberately never starts or manages them. */
 async function requireProjectDependencies(config, project, targets = {}) {
-  let failures = await failedProjectDependencies(project.dependencies, { config, targets })
+  let failures = await failedProjectDependencies(project.dependencies, {
+    config,
+    targets,
+  })
   // A newly started file provider needs a moment to load existing dependency routes.
   for (let attempt = 0; failures.length > 0 && attempt < 5; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 500))
-    failures = await failedProjectDependencies(project.dependencies, { config, targets })
+    failures = await failedProjectDependencies(project.dependencies, {
+      config,
+      targets,
+    })
   }
   if (failures.length === 0) return
 
-  const failed = failures.map(({ dependency, url, detail }) => `${dependency.name} at ${url} (${detail})`).join(', ')
-  const names = failures.map(({ dependency, worktree }) => worktree ? `${dependency.name}'s ${worktree} worktree` : dependency.name).join(', ')
-  const revert = failures.filter(({ worktree }) => worktree).map(({ dependency }) => `devkit use ${dependency.name} --primary`)
+  const failed = failures
+    .map(
+      ({ dependency, url, detail }) =>
+        `${dependency.name} at ${url} (${detail})`,
+    )
+    .join(', ')
+  const names = failures
+    .map(({ dependency, worktree }) =>
+      worktree ? `${dependency.name}'s ${worktree} worktree` : dependency.name,
+    )
+    .join(', ')
+  const revert = failures
+    .filter(({ worktree }) => worktree)
+    .map(({ dependency }) => `devkit use ${dependency.name} --primary`)
   throw new PreflightError(
     `required Devkit project${failures.length === 1 ? '' : 's'} not running: ${failed}`,
-    `start ${names} independently, then run this project again${revert.length ? ` (or \`${revert.join('`, `')}\` to use the primary checkout)` : ''}`
+    `start ${names} independently, then run this project again${revert.length ? ` (or \`${revert.join('`, `')}\` to use the primary checkout)` : ''}`,
   )
 }
 
@@ -299,7 +425,11 @@ function baseEnv({ identity, url, urls, databaseUrl, proxyAddress }) {
      */
     VITE_DEV_HOST: '0.0.0.0',
     /** Vite rejects an unknown Host header, and every request arrives from the proxy carrying it. */
-    VITE_DEV_ALLOWED_HOSTS: [...checkoutHostnames(identity), 'localhost', '127.0.0.1'].join(',')
+    VITE_DEV_ALLOWED_HOSTS: [
+      ...checkoutHostnames(identity),
+      'localhost',
+      '127.0.0.1',
+    ].join(','),
   }
 }
 
@@ -309,7 +439,7 @@ function ensureDatabaseInfra(config) {
   return composeUp(database.project, database.files, {
     cwd: config.infraDir,
     env: database.env,
-    services: [database.service]
+    services: [database.service],
   })
 }
 
@@ -332,7 +462,7 @@ export async function prepareDatabase({ repoRoot, log = console.log }) {
   if (!project.database.hostAccess) {
     throw new PreflightError(
       'this project has not enabled host access to its checkout database',
-      'set `database.hostAccess: true` in devkit.config.mjs'
+      'set `database.hostAccess: true` in devkit.config.mjs',
     )
   }
 
@@ -341,45 +471,66 @@ export async function prepareDatabase({ repoRoot, log = console.log }) {
   copyWorktreeFiles({ checkout: readGitCheckout(repoRoot), project })
 
   const installation = ensureCheckoutInstall({ repoRoot, project })
-  if (installation.installed) log?.(`[devkit] checkout-local dependencies ready (${project.install.command.join(' ')})`)
+  if (installation.installed)
+    log?.(
+      `[devkit] checkout-local dependencies ready (${project.install.command.join(' ')})`,
+    )
 
   const docker = probeDocker()
   if (!docker.ok) throw new PreflightError(docker.reason, docker.fix)
   if (!ensureDatabaseInfra(config)) {
     throw new PreflightError(
       `the checkout ${project.database.engine} database could not be started`,
-      'run `devkit bootstrap` to (re)install Devkit, or `devkit doctor` to see what is wrong'
+      'run `devkit bootstrap` to (re)install Devkit, or `devkit doctor` to see what is wrong',
     )
   }
   waitForDatabase(config, project)
 
   const provisioned = ensureCheckoutDatabase(config, identity, project)
   if (provisioned.error) {
-    throw new PreflightError(`could not create database ${provisioned.name}: ${provisioned.error}`)
+    throw new PreflightError(
+      `could not create database ${provisioned.name}: ${provisioned.error}`,
+    )
   }
 
-  const database = checkoutHostDatabase(config, identity.databaseName, project.database.engine)
-  log?.(`[devkit] host database ready (${project.database.engine}:${config.databaseRuntime.version})`)
+  const database = checkoutHostDatabase(
+    config,
+    identity.databaseName,
+    project.database.engine,
+  )
+  log?.(
+    `[devkit] host database ready (${project.database.engine}:${config.databaseRuntime.version})`,
+  )
   return {
     config,
     project,
     identity,
     database,
     databaseUrl: database.url,
-    compose: databaseCompose(config)
+    compose: databaseCompose(config),
   }
 }
 
 /** A container accepts TCP before it accepts queries; poll until a trivial query succeeds. */
-export function waitForDatabase(config, project, { attempts = 30, delayMs = 500 } = {}) {
+export function waitForDatabase(
+  config,
+  project,
+  { attempts = 30, delayMs = 500 } = {},
+) {
   const engine = project.database.engine
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if ((engine === 'mariadb' ? mariadbSql(config, 'select 1') : postgresSql(config, 'select 1')).ok) return
+    if (
+      (engine === 'mariadb'
+        ? mariadbSql(config, 'select 1')
+        : postgresSql(config, 'select 1')
+      ).ok
+    )
+      return
     sleepSync(delayMs)
   }
   throw new PreflightError(
     `the checkout ${engine === 'mariadb' ? 'MariaDB' : 'Postgres'} did not become ready`,
-    `check \`docker compose -p ${config.databaseRuntime.project} logs ${config.databaseRuntime.service}\``
+    `check \`docker compose -p ${config.databaseRuntime.project} logs ${config.databaseRuntime.service}\``,
   )
 }
 
@@ -390,7 +541,9 @@ function sleepSync(ms) {
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return 'unknown size'
   const mb = bytes / 1_048_576
-  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return mb >= 1
+    ? `${mb.toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
 /**
@@ -403,27 +556,41 @@ function formatBytes(bytes) {
  * Best-effort by contract: it runs after the dev servers are already up, and a failure logs rather
  * than interrupting a working session. `state` is what `preflight()` returned.
  */
-export function refreshBaselineAfterMigrations(state, { log = console.log } = {}) {
+export function refreshBaselineAfterMigrations(
+  state,
+  { log = console.log } = {},
+) {
   if (!state?.identity.isPrimary) return
   const after = appliedMigrationCount(
     state.config,
     state.identity.databaseName,
     state.project.migrationsTable,
-    state.project
+    state.project,
   )
-  if (after === null || state.migrationsBefore === null || after <= state.migrationsBefore) return
+  if (
+    after === null ||
+    state.migrationsBefore === null ||
+    after <= state.migrationsBefore
+  )
+    return
 
   const snapshot = snapshotBaseline(state.config, state.identity, state.project)
   if (!snapshot.ok) {
     log(`[devkit] baseline refresh skipped: ${snapshot.error}`)
     return
   }
-  const captured = state.project.baselinePaths.length === 0
-    ? { ok: true }
-    : captureDataBaseline(state.config, state.identity, state.identity.toplevel, state.project.baselinePaths)
+  const captured =
+    state.project.baselinePaths.length === 0
+      ? { ok: true }
+      : captureDataBaseline(
+          state.config,
+          state.identity,
+          state.identity.toplevel,
+          state.project.baselinePaths,
+        )
   log(
     captured.ok
       ? `[devkit] baseline refreshed after ${after - state.migrationsBefore} new migration(s); previous kept as ${snapshot.previous}`
-      : `[devkit] baseline database refreshed but the data capture failed: ${captured.error}`
+      : `[devkit] baseline database refreshed but the data capture failed: ${captured.error}`,
   )
 }

@@ -20,7 +20,11 @@ function fixture({ downStatus = 0, spawnError = null, downError = null } = {}) {
   const calls = []
   const releases = []
   const leaseEvents = []
-  const runner = { release() { leaseEvents.push('lease-released') } }
+  const runner = {
+    release() {
+      leaseEvents.push('lease-released')
+    },
+  }
   processTarget.once('exit', runner.release)
   const runtime = {
     process: processTarget,
@@ -34,18 +38,18 @@ function fixture({ downStatus = 0, spawnError = null, downError = null } = {}) {
       if (downError) throw downError
       calls.push({ type: 'spawnSync', command, args, options })
       return { status: downStatus, signal: null }
-    }
+    },
   }
   const state = {
     runner,
     config: { routesDir: '/tmp/devkit-lifecycle-test-routes' },
-    identity: { slug: 'app-test' }
+    identity: { slug: 'app-test' },
   }
   const invocation = {
     command: 'docker',
     args: ['compose', '-p', 'app-test'],
     cwd: '/workspace',
-    env: { TEST: '1' }
+    env: { TEST: '1' },
   }
 
   return {
@@ -59,10 +63,10 @@ function fixture({ downStatus = 0, spawnError = null, downError = null } = {}) {
         leaseEvents.push('proxy-released')
         releases.push({ config, identity })
         return true
-      }
+      },
     }),
     processTarget,
-    releases
+    releases,
   }
 }
 
@@ -71,10 +75,23 @@ test('stop includes configured profiles and tears down only once', () => {
 
   assert.equal(lifecycle.stop(), 0)
   assert.equal(lifecycle.stop(), 0)
-  assert.deepEqual(calls.map(({ type, args }) => ({ type, args })), [{
-    type: 'spawnSync',
-    args: ['compose', '-p', 'app-test', '--profile', 'slicer', 'down', '--remove-orphans']
-  }])
+  assert.deepEqual(
+    calls.map(({ type, args }) => ({ type, args })),
+    [
+      {
+        type: 'spawnSync',
+        args: [
+          'compose',
+          '-p',
+          'app-test',
+          '--profile',
+          'slicer',
+          'down',
+          '--remove-orphans',
+        ],
+      },
+    ],
+  )
   assert.equal(releases.length, 1)
 })
 
@@ -100,25 +117,37 @@ test('a failed cleanup changes a successful foreground result', async () => {
   assert.equal(await result, 17)
 })
 
-
 test('exit cleanup keeps ownership until the stack and proxy have stopped', () => {
   const { leaseEvents, processTarget } = fixture()
   processTarget.emit('exit')
-  assert.deepEqual(leaseEvents.slice(0, 3), ['stack-stopped', 'proxy-released', 'lease-released'])
+  assert.deepEqual(leaseEvents.slice(0, 3), [
+    'stack-stopped',
+    'proxy-released',
+    'lease-released',
+  ])
 })
 
 test('synchronous runner startup failure tears down the stack and releases ownership', async () => {
   const error = new Error('spawn failed')
   const { lifecycle, leaseEvents } = fixture({ spawnError: error })
   await assert.rejects(lifecycle.run(['up']), error)
-  assert.deepEqual(leaseEvents, ['stack-stopped', 'proxy-released', 'lease-released'])
+  assert.deepEqual(leaseEvents, [
+    'stack-stopped',
+    'proxy-released',
+    'lease-released',
+  ])
 })
 
-
 test('a thrown cleanup error returns failure and still releases the proxy and lease', async () => {
-  const { lifecycle, child, leaseEvents } = fixture({ downError: new Error('cleanup spawn failed') })
+  const { lifecycle, child, leaseEvents } = fixture({
+    downError: new Error('cleanup spawn failed'),
+  })
   const result = lifecycle.run(['up'])
   child.emit('close', 0, null)
   assert.equal(await result, 1)
-  assert.deepEqual(leaseEvents, ['stack-stopped', 'proxy-released', 'lease-released'])
+  assert.deepEqual(leaseEvents, [
+    'stack-stopped',
+    'proxy-released',
+    'lease-released',
+  ])
 })

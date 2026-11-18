@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -12,7 +18,7 @@ import {
   releaseProxy,
   removeRoute,
   routeFilePath,
-  writeRoute
+  writeRoute,
 } from '../src/proxy.mjs'
 
 function scratchConfig() {
@@ -22,7 +28,7 @@ function scratchConfig() {
     routesDir: path.join(configDir, 'routes'),
     infraDir: path.join(configDir, 'infra'),
     infraProject: 'devkit-infra',
-    proxyPort: 80
+    proxyPort: 80,
   }
 }
 
@@ -31,7 +37,7 @@ function worktreeIdentity(name) {
     gitDir: `/workspace/printstream/.git/worktrees/${name}`,
     gitCommonDir: '/workspace/printstream/.git',
     toplevel: `/workspace/printstream/.worktrees/${name}`,
-    root: `/workspace/printstream/.worktrees/${name}`
+    root: `/workspace/printstream/.worktrees/${name}`,
   })
 }
 
@@ -42,7 +48,10 @@ test('the route sends the checkout hostname to its port on the host', () => {
     const file = writeRoute(config, identity, 31180)
     const contents = readFileSync(file, 'utf8')
 
-    assert.match(contents, /rule: "Host\(`slice-crash-gate\.printstream\.localhost`\)"/)
+    assert.match(
+      contents,
+      /rule: "Host\(`slice-crash-gate\.printstream\.localhost`\)"/,
+    )
     assert.match(contents, /url: "http:\/\/host\.docker\.internal:31180"/)
     assert.match(contents, /entryPoints:\n\s+- web/)
   } finally {
@@ -68,11 +77,16 @@ test('rewriting a route replaces it rather than appending a second router', () =
 test('preferred remote routes retain localhost aliases on the same checkout service', () => {
   const config = scratchConfig()
   try {
-    const identity = { ...worktreeIdentity('fix'),
-      hostname: 'fix.printstream.server.home', secondaryHostnames: ['fix.printstream.localhost']
+    const identity = {
+      ...worktreeIdentity('fix'),
+      hostname: 'fix.printstream.server.home',
+      secondaryHostnames: ['fix.printstream.localhost'],
     }
     const contents = readFileSync(writeRoute(config, identity, 21000), 'utf8')
-    assert.match(contents, /Host\(`fix\.printstream\.server\.home`\) \|\| Host\(`fix\.printstream\.localhost`\)/)
+    assert.match(
+      contents,
+      /Host\(`fix\.printstream\.server\.home`\) \|\| Host\(`fix\.printstream\.localhost`\)/,
+    )
     assert.equal(contents.match(/loadBalancer:/g).length, 1)
   } finally {
     rmSync(config.configDir, { recursive: true, force: true })
@@ -124,8 +138,24 @@ test('the proxy starts on acquisition and stops only after its final route is re
   }
 
   try {
-    assert.equal(acquireProxy(config, first, 21000, { start, interfaces: {} , remove: () => true, warn: null }), true)
-    assert.equal(acquireProxy(config, second, 22000, { start, interfaces: {} , remove: () => true, warn: null }), true)
+    assert.equal(
+      acquireProxy(config, first, 21000, {
+        start,
+        interfaces: {},
+        remove: () => true,
+        warn: null,
+      }),
+      true,
+    )
+    assert.equal(
+      acquireProxy(config, second, 22000, {
+        start,
+        interfaces: {},
+        remove: () => true,
+        warn: null,
+      }),
+      true,
+    )
     assert.equal(starts.length, 2)
 
     assert.equal(releaseProxy(config, first, { stop }), true)
@@ -151,12 +181,30 @@ test('bootstrap reconciliation removes a legacy proxy unless routes are active',
   }
 
   try {
-    assert.deepEqual(reconcileProxy(config, { start, stop, interfaces: {}, remove: () => true, warn: null }), { ok: true, running: false })
+    assert.deepEqual(
+      reconcileProxy(config, {
+        start,
+        stop,
+        interfaces: {},
+        remove: () => true,
+        warn: null,
+      }),
+      { ok: true, running: false },
+    )
     assert.equal(starts.length, 0)
     assert.equal(stops.length, 1)
 
     writeRoute(config, worktreeIdentity('active'), 21000)
-    assert.deepEqual(reconcileProxy(config, { start, stop, interfaces: {}, remove: () => true, warn: null }), { ok: true, running: true })
+    assert.deepEqual(
+      reconcileProxy(config, {
+        start,
+        stop,
+        interfaces: {},
+        remove: () => true,
+        warn: null,
+      }),
+      { ok: true, running: true },
+    )
     assert.equal(starts.length, 1)
     assert.equal(stops.length, 1)
   } finally {
@@ -174,14 +222,20 @@ test('reconciliation removes abandoned leased and legacy checkout routes', () =>
     const leasedFile = writeRoute(config, leased, 21000)
     writeFileSync(
       leasedFile,
-      readFileSync(leasedFile, 'utf8').replace(String(process.pid), '2147483647'),
-      'utf8'
+      readFileSync(leasedFile, 'utf8').replace(
+        String(process.pid),
+        '2147483647',
+      ),
+      'utf8',
     )
     const legacyFile = writeRoute(config, legacy, 22000)
     writeFileSync(
       legacyFile,
-      readFileSync(legacyFile, 'utf8').replace(/^# Devkit checkout owner pid: \d+\n/m, ''),
-      'utf8'
+      readFileSync(legacyFile, 'utf8').replace(
+        /^# Devkit checkout owner pid: \d+\n/m,
+        '',
+      ),
+      'utf8',
     )
 
     const result = reconcileProxy(config, {
@@ -190,7 +244,7 @@ test('reconciliation removes abandoned leased and legacy checkout routes', () =>
       stop: (...args) => {
         stops.push(args)
         return true
-      }
+      },
     })
 
     assert.deepEqual(result, { ok: true, running: false })
@@ -208,11 +262,19 @@ test('reconciliation preserves a legacy route whose checkout stack is still runn
 
   try {
     const file = writeRoute(config, identity, 22000)
-    writeFileSync(file, readFileSync(file, 'utf8').replace(/^# Devkit checkout owner pid: \d+\n/m, ''), 'utf8')
+    writeFileSync(
+      file,
+      readFileSync(file, 'utf8').replace(
+        /^# Devkit checkout owner pid: \d+\n/m,
+        '',
+      ),
+      'utf8',
+    )
     const result = reconcileProxy(config, {
-      containers: (project) => project === identity.composeProject ? ['database'] : [],
+      containers: (project) =>
+        project === identity.composeProject ? ['database'] : [],
       start: () => true,
-      stop: () => true
+      stop: () => true,
     })
 
     assert.deepEqual(result, { ok: true, running: true })
@@ -223,36 +285,80 @@ test('reconciliation preserves a legacy route whose checkout stack is still runn
 })
 
 test('unavailable LAN and IPv6 listeners do not block IPv4, and stale optional listeners stop', () => {
-  const config = { ...scratchConfig(), proxyNetwork: 'host', proxyBindAddress: '192.0.2.99' }
-  const starts = [], removals = [], warnings = []
+  const config = {
+    ...scratchConfig(),
+    proxyNetwork: 'host',
+    proxyBindAddress: '192.0.2.99',
+  }
+  const starts = [],
+    removals = [],
+    warnings = []
   try {
-    assert.equal(ensureProxy(config, {
-      start: (project, files, options) => { starts.push(options.services); return true },
-      remove: (project, files, options) => { removals.push(options.services); return true },
-      interfaces: {}, warn: (message) => warnings.push(message)
-    }), true)
+    assert.equal(
+      ensureProxy(config, {
+        start: (project, files, options) => {
+          starts.push(options.services)
+          return true
+        },
+        remove: (project, files, options) => {
+          removals.push(options.services)
+          return true
+        },
+        interfaces: {},
+        warn: (message) => warnings.push(message),
+      }),
+      true,
+    )
     assert.deepEqual(starts, [['proxy']])
     assert.deepEqual(removals, [['proxy-ipv6'], ['proxy-lan']])
     assert.equal(warnings.length, 2)
-    assert.match(readFileSync(path.join(config.infraDir, 'traefik.yml'), 'utf8'), /127\.0\.0\.1:80/)
-    assert.match(readFileSync(path.join(config.infraDir, 'traefik.lan.yml'), 'utf8'), /192\.0\.2\.99:80/)
-  } finally { rmSync(config.configDir, { recursive: true, force: true }) }
+    assert.match(
+      readFileSync(path.join(config.infraDir, 'traefik.yml'), 'utf8'),
+      /127\.0\.0\.1:80/,
+    )
+    assert.match(
+      readFileSync(path.join(config.infraDir, 'traefik.lan.yml'), 'utf8'),
+      /192\.0\.2\.99:80/,
+    )
+  } finally {
+    rmSync(config.configDir, { recursive: true, force: true })
+  }
 })
 
 test('optional bind failures are warnings while required bind failure stops acquisition', () => {
-  const config = { ...scratchConfig(), proxyNetwork: 'host', proxyBindAddress: '192.0.2.99' }
+  const config = {
+    ...scratchConfig(),
+    proxyNetwork: 'host',
+    proxyBindAddress: '192.0.2.99',
+  }
   const identity = worktreeIdentity('bind-failure')
-  const services = [], warnings = []
-  const interfaces = { loopback: [{ address: '::1' }], lan: [{ address: '192.0.2.99' }] }
+  const services = [],
+    warnings = []
+  const interfaces = {
+    loopback: [{ address: '::1' }],
+    lan: [{ address: '192.0.2.99' }],
+  }
   try {
-    assert.equal(acquireProxy(config, identity, 21000, {
-      interfaces, warn: (message) => warnings.push(message),
-      start: (project, files, options) => { services.push(options.services[0]); return options.services[0] === 'proxy' }
-    }), true)
+    assert.equal(
+      acquireProxy(config, identity, 21000, {
+        interfaces,
+        warn: (message) => warnings.push(message),
+        start: (project, files, options) => {
+          services.push(options.services[0])
+          return options.services[0] === 'proxy'
+        },
+      }),
+      true,
+    )
     assert.deepEqual(services, ['proxy', 'proxy-ipv6', 'proxy-lan'])
     assert.equal(warnings.length, 2)
     assert.ok(existsSync(routeFilePath(config, identity)))
-    assert.equal(acquireProxy(config, identity, 21000, { interfaces, start: () => false }), false)
+    assert.equal(
+      acquireProxy(config, identity, 21000, { interfaces, start: () => false }),
+      false,
+    )
     assert.equal(existsSync(routeFilePath(config, identity)), false)
-  } finally { rmSync(config.configDir, { recursive: true, force: true }) }
+  } finally {
+    rmSync(config.configDir, { recursive: true, force: true })
+  }
 })

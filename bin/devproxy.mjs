@@ -19,7 +19,14 @@
  * Counterparts: `infra/traefik.yml` (which names the watched directory) and `src/proxy.mjs` (the
  * same file format plus the shared lazy-start lifecycle).
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 
@@ -41,7 +48,7 @@ function config() {
   if (!cfg) {
     fail(
       'Devkit is not enabled on this machine',
-      'Run `devkit bootstrap` once from the host.'
+      'Run `devkit bootstrap` once from the host.',
     )
   }
   return cfg
@@ -52,19 +59,26 @@ function normalizeHostname(raw, cfg) {
   try {
     return proxyHostnames(raw, cfg).hostname
   } catch (error) {
-    fail(error.message, 'Labels may hold a-z, 0-9 and hyphens, e.g. issue-123.myapp')
+    fail(
+      error.message,
+      'Labels may hold a-z, 0-9 and hyphens, e.g. issue-123.myapp',
+    )
   }
 }
 
 function normalizePort(raw) {
   const port = Number(raw)
-  if (!Number.isInteger(port) || port < 1 || port > 65535) fail(`"${raw}" is not a port`, 'devproxy add <hostname> <port>')
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    fail(`"${raw}" is not a port`, 'devproxy add <hostname> <port>')
   return port
 }
 
 /** One file per hostname, named from it, so a stale route is obvious and safe to delete by hand. */
 function routeFile(cfg, hostname) {
-  return path.join(cfg.routesDir, `${PREFIX}${hostname.replace(/[^a-z0-9.-]/g, '-')}.yml`)
+  return path.join(
+    cfg.routesDir,
+    `${PREFIX}${hostname.replace(/[^a-z0-9.-]/g, '-')}.yml`,
+  )
 }
 
 /** Router and service names must be unique across EVERY file, so they carry the hostname too. */
@@ -118,15 +132,23 @@ http:
         servers:
           - url: "http://host.docker.internal:${port}"
 `,
-    'utf8'
+    'utf8',
   )
 
   const proxy = reconcileProxy(cfg)
-  if (!proxy.ok) fail('the route was written, but the shared proxy could not be started', 'Run `devkit doctor` for details.')
+  if (!proxy.ok)
+    fail(
+      'the route was written, but the shared proxy could not be started',
+      'Run `devkit doctor` for details.',
+    )
 
-  for (const host of hostnames) console.log(`  ${publicOrigin(host, cfg)}  ->  http://localhost:${port}`)
+  for (const host of hostnames)
+    console.log(`  ${publicOrigin(host, cfg)}  ->  http://localhost:${port}`)
   return portAnswers(port).then((answers) => {
-    if (!answers) console.log(`  (nothing is listening on ${port} yet; the route is live and will work once something is)`)
+    if (!answers)
+      console.log(
+        `  (nothing is listening on ${port} yet; the route is live and will work once something is)`,
+      )
   })
 }
 
@@ -140,40 +162,56 @@ function remove(cfg, [rawHost]) {
     if (existsSync(generated)) {
       fail(
         `${hostname} is registered by a running Devkit checkout, not by devproxy`,
-        `Stop its \`npm run dev\` and the route removes itself (${generated}).`
+        `Stop its \`npm run dev\` and the route removes itself (${generated}).`,
       )
     }
-    fail(`no devproxy route for ${hostname}`, 'devproxy ls shows what is registered')
+    fail(
+      `no devproxy route for ${hostname}`,
+      'devproxy ls shows what is registered',
+    )
   }
   rmSync(file, { force: true })
   const proxy = reconcileProxy(cfg)
-  if (!proxy.ok) fail('the route was removed, but the shared proxy could not be reconciled', 'Run `devkit doctor` for details.')
+  if (!proxy.ok)
+    fail(
+      'the route was removed, but the shared proxy could not be reconciled',
+      'Run `devkit doctor` for details.',
+    )
   console.log(`  removed ${hostname}`)
 }
 
 async function list(cfg) {
   if (!existsSync(cfg.routesDir)) return console.log('  no routes yet')
-  const files = readdirSync(cfg.routesDir).filter((file) => file.endsWith('.yml')).sort()
+  const files = readdirSync(cfg.routesDir)
+    .filter((file) => file.endsWith('.yml'))
+    .sort()
   if (files.length === 0) return console.log('  no routes yet')
 
   const rows = []
   for (const file of files) {
     const body = readFileSync(path.join(cfg.routesDir, file), 'utf8')
-    const hostname = [...body.matchAll(/Host\(`([^`]+)`\)/g)].map((match) => match[1]).join(', ') || '(unparsed)'
+    const hostname =
+      [...body.matchAll(/Host\(`([^`]+)`\)/g)]
+        .map((match) => match[1])
+        .join(', ') || '(unparsed)'
     const port = Number(body.match(/host\.docker\.internal:(\d+)/)?.[1])
     rows.push({
       hostname,
       port,
       owner: file.startsWith(PREFIX) ? 'devproxy' : 'checkout',
-      up: Number.isInteger(port) ? await portAnswers(port) : false
+      up: Number.isInteger(port) ? await portAnswers(port) : false,
     })
   }
 
   const width = Math.max(...rows.map((row) => row.hostname.length))
   for (const row of rows) {
-    console.log(`  ${row.up ? 'up  ' : 'down'}  ${row.hostname.padEnd(width)}  ->  :${row.port}   (${row.owner})`)
+    console.log(
+      `  ${row.up ? 'up  ' : 'down'}  ${row.hostname.padEnd(width)}  ->  :${row.port}   (${row.owner})`,
+    )
   }
-  console.log('\n  "checkout" routes are written by a running `npm run dev` and vanish when it stops.')
+  console.log(
+    '\n  "checkout" routes are written by a running `npm run dev` and vanish when it stops.',
+  )
 }
 
 const [command, ...rest] = process.argv.slice(2)

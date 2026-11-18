@@ -22,13 +22,19 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
-  writeFileSync
+  writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
 import { networkInterfaces } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
-import { composeContainers, composeDown, composeUp, composeRemoveServices, infraComposeEnv } from './docker.mjs'
+import {
+  composeContainers,
+  composeDown,
+  composeUp,
+  composeRemoveServices,
+  infraComposeEnv,
+} from './docker.mjs'
 
 import { processIsAlive, withRuntimeLock } from './runtime-lock.mjs'
 import { traefikConfig } from './host-setup.mjs'
@@ -55,7 +61,9 @@ export function writeRoute(config, identity, port) {
 http:
   routers:
     ${name}:
-      rule: "${checkoutHostnames(identity).map((hostname) => `Host(\`${hostname}\`)`).join(' || ')}"
+      rule: "${checkoutHostnames(identity)
+        .map((hostname) => `Host(\`${hostname}\`)`)
+        .join(' || ')}"
       service: ${name}
       entryPoints:
         - web
@@ -88,9 +96,14 @@ export function removeRoute(config, identity) {
 export function proxyCompose(config) {
   return {
     project: config.infraProject,
-    files: [path.join(config.infraDir, config.proxyNetwork === 'host' ? 'compose.host.yml' : 'compose.yml')],
+    files: [
+      path.join(
+        config.infraDir,
+        config.proxyNetwork === 'host' ? 'compose.host.yml' : 'compose.yml',
+      ),
+    ],
     cwd: config.infraDir,
-    env: infraComposeEnv(config)
+    env: infraComposeEnv(config),
   }
 }
 
@@ -100,52 +113,115 @@ export function installProxyDefinitions(config) {
   mkdirSync(config.infraDir, { recursive: true })
   const writeChanged = (name, contents) => {
     const target = path.join(config.infraDir, name)
-    if (!existsSync(target) || readFileSync(target, 'utf8') !== contents) writeFileSync(target, contents, 'utf8')
+    if (!existsSync(target) || readFileSync(target, 'utf8') !== contents)
+      writeFileSync(target, contents, 'utf8')
   }
   for (const name of ['compose.yml', 'compose.host.yml']) {
     // Old clients select compose.yml; keep that entry on this machine's chosen network.
-    const source = name === 'compose.yml' && config.proxyNetwork === 'host' ? 'compose.host.yml' : name
+    const source =
+      name === 'compose.yml' && config.proxyNetwork === 'host'
+        ? 'compose.host.yml'
+        : name
     writeChanged(name, readFileSync(path.join(sourceDir, source), 'utf8'))
   }
   const template = readFileSync(path.join(sourceDir, 'traefik.yml'), 'utf8')
-  for (const [name, listener] of [['traefik.yml', 'local'], ['traefik.ipv6.yml', 'ipv6'], ['traefik.lan.yml', 'lan']]) {
+  for (const [name, listener] of [
+    ['traefik.yml', 'local'],
+    ['traefik.ipv6.yml', 'ipv6'],
+    ['traefik.lan.yml', 'lan'],
+  ]) {
     writeChanged(name, traefikConfig(template, config, listener))
   }
 }
 
 function localInterfaces() {
-  try { return networkInterfaces() } catch { return {} }
+  try {
+    return networkInterfaces()
+  } catch {
+    return {}
+  }
 }
 
 export function optionalProxyListeners(config, interfaces = localInterfaces()) {
   config = { ...config, ...normalizeHostRouting(config) }
-  const addresses = Object.values(interfaces).flat().map(({ address }) => address)
-  const listeners = [{ service: 'proxy-ipv6', available: addresses.includes('::1'), address: '::1' }]
-  if (config.proxyNetwork === 'host' && !['127.0.0.1', '::1'].includes(config.proxyBindAddress)) {
-    listeners.push({ service: 'proxy-lan', available: addresses.includes(config.proxyBindAddress), address: config.proxyBindAddress })
+  const addresses = Object.values(interfaces)
+    .flat()
+    .map(({ address }) => address)
+  const listeners = [
+    {
+      service: 'proxy-ipv6',
+      available: addresses.includes('::1'),
+      address: '::1',
+    },
+  ]
+  if (
+    config.proxyNetwork === 'host' &&
+    !['127.0.0.1', '::1'].includes(config.proxyBindAddress)
+  ) {
+    listeners.push({
+      service: 'proxy-lan',
+      available: addresses.includes(config.proxyBindAddress),
+      address: config.proxyBindAddress,
+    })
   }
-  if (config.proxyNetwork === 'host' && listeners.length === 1) listeners.push({ service: 'proxy-lan', available: false, enabled: false, address: config.proxyBindAddress })
+  if (config.proxyNetwork === 'host' && listeners.length === 1)
+    listeners.push({
+      service: 'proxy-lan',
+      available: false,
+      enabled: false,
+      address: config.proxyBindAddress,
+    })
   return listeners
 }
 
 /** Required IPv4 loopback first; each optional listener is a separate failure domain. */
-function startProxy(config, {
-  start = composeUp, remove = composeRemoveServices, interfaces = localInterfaces(), warn = console.warn
-} = {}) {
+function startProxy(
+  config,
+  {
+    start = composeUp,
+    remove = composeRemoveServices,
+    interfaces = localInterfaces(),
+    warn = console.warn,
+  } = {},
+) {
   config = { ...config, ...normalizeHostRouting(config) }
   installProxyDefinitions(config)
   const compose = proxyCompose(config)
-  const options = { cwd: compose.cwd, env: compose.env, wait: true, removeOrphans: true }
-  if (!start(compose.project, compose.files, { ...options, services: ['proxy'] })) return false
+  const options = {
+    cwd: compose.cwd,
+    env: compose.env,
+    wait: true,
+    removeOrphans: true,
+  }
+  if (
+    !start(compose.project, compose.files, { ...options, services: ['proxy'] })
+  )
+    return false
   for (const listener of optionalProxyListeners(config, interfaces)) {
     if (!listener.available) {
-      if (!remove(compose.project, compose.files, { ...options, services: [listener.service] })) {
-        warn?.(`[devkit] could not remove optional ${listener.service}; inspect it with devkit doctor`)
+      if (
+        !remove(compose.project, compose.files, {
+          ...options,
+          services: [listener.service],
+        })
+      ) {
+        warn?.(
+          `[devkit] could not remove optional ${listener.service}; inspect it with devkit doctor`,
+        )
       }
       if (listener.enabled === false) continue
-      warn?.(`[devkit] optional ${listener.service} unavailable at ${listener.address}; IPv4 localhost remains available`)
-    } else if (!start(compose.project, compose.files, { ...options, services: [listener.service] })) {
-      warn?.(`[devkit] optional ${listener.service} failed at ${listener.address}; IPv4 localhost remains available`)
+      warn?.(
+        `[devkit] optional ${listener.service} unavailable at ${listener.address}; IPv4 localhost remains available`,
+      )
+    } else if (
+      !start(compose.project, compose.files, {
+        ...options,
+        services: [listener.service],
+      })
+    ) {
+      warn?.(
+        `[devkit] optional ${listener.service} failed at ${listener.address}; IPv4 localhost remains available`,
+      )
     }
   }
   return true
@@ -176,7 +252,9 @@ function legacyComposeProject(contents) {
 function registeredRoutes(config, { containers = composeContainers } = {}) {
   try {
     const active = []
-    for (const file of readdirSync(config.routesDir).filter((name) => name.endsWith('.yml'))) {
+    for (const file of readdirSync(config.routesDir).filter((name) =>
+      name.endsWith('.yml'),
+    )) {
       if (file.startsWith('devproxy-')) {
         active.push(file)
         continue
@@ -184,8 +262,13 @@ function registeredRoutes(config, { containers = composeContainers } = {}) {
 
       const routePath = path.join(config.routesDir, file)
       const contents = readFileSync(routePath, 'utf8')
-      const ownerPid = Number.parseInt(contents.match(/^# Devkit checkout owner pid: (\d+)$/m)?.[1] ?? '', 10)
-      const legacyProject = Number.isInteger(ownerPid) ? null : legacyComposeProject(contents)
+      const ownerPid = Number.parseInt(
+        contents.match(/^# Devkit checkout owner pid: (\d+)$/m)?.[1] ?? '',
+        10,
+      )
+      const legacyProject = Number.isInteger(ownerPid)
+        ? null
+        : legacyComposeProject(contents)
       const inUse = Number.isInteger(ownerPid)
         ? processIsAlive(ownerPid)
         : legacyProject !== null && containers(legacyProject).length > 0
@@ -221,7 +304,11 @@ export function acquireProxy(config, identity, port, options = {}) {
  * Permanent routes created by `devproxy` count as consumers too. This keeps those explicit names
  * working while still allowing a machine with no routes at all to become fully idle.
  */
-export function releaseProxy(config, identity, { stop = composeDown, containers = composeContainers } = {}) {
+export function releaseProxy(
+  config,
+  identity,
+  { stop = composeDown, containers = composeContainers } = {},
+) {
   return withRuntimeLock(config, 'proxy', () => {
     removeRoute(config, identity)
     if (registeredRoutes(config, { containers }).length > 0) return true
@@ -229,7 +316,7 @@ export function releaseProxy(config, identity, { stop = composeDown, containers 
     const compose = proxyCompose(config)
     return stop(compose.project, compose.files, {
       cwd: compose.cwd,
-      env: compose.env
+      env: compose.env,
     })
   })
 }
@@ -242,7 +329,7 @@ export function releaseProxy(config, identity, { stop = composeDown, containers 
  */
 export function reconcileProxy(
   config,
-  { stop = composeDown, containers = composeContainers, ...options } = {}
+  { stop = composeDown, containers = composeContainers, ...options } = {},
 ) {
   return withRuntimeLock(config, 'proxy', () => {
     const compose = proxyCompose(config)
@@ -253,8 +340,10 @@ export function reconcileProxy(
       env: compose.env,
     }
     return {
-      ok: running ? startProxy(config, options) : stop(compose.project, compose.files, stopOptions),
-      running
+      ok: running
+        ? startProxy(config, options)
+        : stop(compose.project, compose.files, stopOptions),
+      running,
     }
   })
 }

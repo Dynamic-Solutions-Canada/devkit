@@ -5,19 +5,28 @@
  * Compose project as the repository's application services. Project files remain repository-owned
  * because only the project knows its mounts, commands, and internal ports.
  */
-export function checkoutCompose(state, { files = [], env = {}, projectDirectory } = {}) {
+export function checkoutCompose(
+  state,
+  { files = [], env = {}, projectDirectory } = {},
+) {
   if (!state?.identity?.composeProject || !state?.compose) {
-    throw new Error('devkit: checkoutCompose requires a completed preflight state')
+    throw new Error(
+      'devkit: checkoutCompose requires a completed preflight state',
+    )
   }
 
   const composeFiles = [...state.compose.files, ...files]
-  if (!projectDirectory) throw new Error('devkit: checkoutCompose requires the project directory')
+  if (!projectDirectory)
+    throw new Error('devkit: checkoutCompose requires the project directory')
 
   const args = [
     'compose',
-    '--env-file', '/dev/null',
-    '--project-directory', projectDirectory,
-    '-p', state.identity.composeProject
+    '--env-file',
+    '/dev/null',
+    '--project-directory',
+    projectDirectory,
+    '-p',
+    state.identity.composeProject,
   ]
   for (const file of composeFiles) args.push('-f', file)
 
@@ -29,7 +38,7 @@ export function checkoutCompose(state, { files = [], env = {}, projectDirectory 
       ...process.env,
       ...state.compose.env,
       ...state.env,
-      ...env
-    }
+      ...env,
+    },
   }
 }

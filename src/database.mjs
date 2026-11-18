@@ -19,7 +19,13 @@ import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import { postgresIdentifier } from './checkout-identity.mjs'
-import { mariadbExec, mariadbSql, postgresExec, postgresSql, shellQuote } from './docker.mjs'
+import {
+  mariadbExec,
+  mariadbSql,
+  postgresExec,
+  postgresSql,
+  shellQuote,
+} from './docker.mjs'
 
 function databaseEngine(project) {
   return project?.database?.engine ?? 'postgres'
@@ -27,11 +33,14 @@ function databaseEngine(project) {
 
 /** Applies a project's database base-name override without changing its hostname or port identity. */
 export function resolveDatabaseIdentity(identity, project) {
-  const baseName = postgresIdentifier('', project?.database?.name ?? identity.repoName)
+  const baseName = postgresIdentifier(
+    '',
+    project?.database?.name ?? identity.repoName,
+  )
   return {
     ...identity,
     databaseBaseName: baseName,
-    databaseName: baseName
+    databaseName: baseName,
   }
 }
 
@@ -39,11 +48,14 @@ export function databaseExists(config, name, project) {
   if (databaseEngine(project) === 'mariadb') {
     const result = mariadbSql(
       config,
-      `select schema_name from information_schema.schemata where schema_name = ${sqlLiteral(name)}`
+      `select schema_name from information_schema.schemata where schema_name = ${sqlLiteral(name)}`,
     )
     return result.ok && result.stdout === name
   }
-  const result = postgresSql(config, `select 1 from pg_database where datname = ${sqlLiteral(name)}`)
+  const result = postgresSql(
+    config,
+    `select 1 from pg_database where datname = ${sqlLiteral(name)}`,
+  )
   return result.ok && result.stdout === '1'
 }
 
@@ -67,10 +79,17 @@ export function ensureCheckoutDatabase(config, identity, project) {
 function ensurePostgresDatabase(config, identity, project) {
   const name = identity.databaseName
   const baseline = databaseBaselinePath(config, identity, project)
-  if (!existsSync(baseline)) return { created: true, name, sourced: 'empty', ...createEmpty(config, name, project) }
+  if (!existsSync(baseline))
+    return {
+      created: true,
+      name,
+      sourced: 'empty',
+      ...createEmpty(config, name, project),
+    }
 
   const created = createEmpty(config, name, project)
-  if (created.error) return { created: true, name, sourced: 'empty', ...created }
+  if (created.error)
+    return { created: true, name, sourced: 'empty', ...created }
   const imported = importPostgresDump(config, name, baseline)
   if (imported.ok) return { created: true, name, sourced: 'baseline', baseline }
 
@@ -80,17 +99,24 @@ function ensurePostgresDatabase(config, identity, project) {
     name,
     sourced: 'empty',
     warning: imported.stderr,
-    ...createEmpty(config, name, project)
+    ...createEmpty(config, name, project),
   }
 }
 
 function ensureMariaDatabase(config, identity, project) {
   const name = identity.databaseName
   const baseline = mariadbBaselinePath(config, identity)
-  if (!existsSync(baseline)) return { created: true, name, sourced: 'empty', ...createEmpty(config, name, project) }
+  if (!existsSync(baseline))
+    return {
+      created: true,
+      name,
+      sourced: 'empty',
+      ...createEmpty(config, name, project),
+    }
 
   const created = createEmpty(config, name, project)
-  if (created.error) return { created: true, name, sourced: 'empty', ...created }
+  if (created.error)
+    return { created: true, name, sourced: 'empty', ...created }
   const imported = importMariaDump(config, name, baseline)
   if (imported.ok) return { created: true, name, sourced: 'baseline', baseline }
 
@@ -100,13 +126,16 @@ function ensureMariaDatabase(config, identity, project) {
     name,
     sourced: 'empty',
     warning: imported.stderr,
-    ...createEmpty(config, name, project)
+    ...createEmpty(config, name, project),
   }
 }
 
 function createEmpty(config, name, project) {
   if (databaseEngine(project) === 'mariadb') {
-    const result = mariadbSql(config, `CREATE DATABASE ${mariadbIdentifier(name)}`)
+    const result = mariadbSql(
+      config,
+      `CREATE DATABASE ${mariadbIdentifier(name)}`,
+    )
     return result.ok ? {} : { error: result.stderr }
   }
   const result = postgresSql(config, `CREATE DATABASE "${name}"`)
@@ -120,7 +149,12 @@ function createEmpty(config, name, project) {
  * the middle of a debugging session is one rename away from being undone, so an automatic refresh
  * can never strand you on data you did not choose.
  */
-export function snapshotBaseline(config, identity, project, { source = identity.databaseName } = {}) {
+export function snapshotBaseline(
+  config,
+  identity,
+  project,
+  { source = identity.databaseName } = {},
+) {
   return databaseEngine(project) === 'mariadb'
     ? snapshotMariaBaseline(config, identity, project, source)
     : snapshotPostgresBaseline(config, identity, project, source)
@@ -140,14 +174,19 @@ function snapshotPostgresBaseline(config, identity, project, source) {
   const user = shellQuote(config.postgres.user)
   const dumped = postgresExec(
     config,
-    `pg_dump -U ${user} --no-owner --no-privileges --file=${shellQuote(containerBaselinePath(staging))} ${shellQuote(source)}`
+    `pg_dump -U ${user} --no-owner --no-privileges --file=${shellQuote(containerBaselinePath(staging))} ${shellQuote(source)}`,
   )
   if (!dumped.ok) {
     rmSync(staging, { force: true })
     return { ok: false, error: dumped.stderr }
   }
 
-  const rotated = rotateBaseline({ baseline, previous, staging, label: 'PostgreSQL' })
+  const rotated = rotateBaseline({
+    baseline,
+    previous,
+    staging,
+    label: 'PostgreSQL',
+  })
   return rotated.ok ? { ok: true, baseline, previous, source } : rotated
 }
 
@@ -168,7 +207,12 @@ function snapshotMariaBaseline(config, identity, project, source) {
     return { ok: false, error: dumped.stderr }
   }
 
-  const rotated = rotateBaseline({ baseline, previous, staging, label: 'MariaDB' })
+  const rotated = rotateBaseline({
+    baseline,
+    previous,
+    staging,
+    label: 'MariaDB',
+  })
   if (!rotated.ok) return rotated
 
   return { ok: true, baseline, previous, source }
@@ -181,19 +225,29 @@ function rotateBaseline({ baseline, previous, staging, label }) {
     renameSync(staging, baseline)
     return { ok: true }
   } catch (error) {
-    if (!existsSync(baseline) && existsSync(previous)) renameSync(previous, baseline)
+    if (!existsSync(baseline) && existsSync(previous))
+      renameSync(previous, baseline)
     rmSync(staging, { force: true })
-    return { ok: false, error: `could not rotate the ${label} baseline: ${error.message}` }
+    return {
+      ok: false,
+      error: `could not rotate the ${label} baseline: ${error.message}`,
+    }
   }
 }
 
 /** Drops a database, disconnecting anything still attached. No-op when it does not exist. */
 export function dropDatabase(config, name, project) {
   if (databaseEngine(project) === 'mariadb') {
-    const result = mariadbSql(config, `DROP DATABASE IF EXISTS ${mariadbIdentifier(name)}`)
+    const result = mariadbSql(
+      config,
+      `DROP DATABASE IF EXISTS ${mariadbIdentifier(name)}`,
+    )
     return result.ok ? { ok: true } : { ok: false, error: result.stderr }
   }
-  const result = postgresSql(config, `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)
+  const result = postgresSql(
+    config,
+    `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`,
+  )
   return result.ok ? { ok: true } : { ok: false, error: result.stderr }
 }
 
@@ -204,20 +258,25 @@ export function dropDatabase(config, name, project) {
  * writes `_prisma_migrations`, Drizzle `__drizzle_migrations`, and a project with no migrations at
  * all (a Sequelize `sync()` schema, say) passes null and simply has no count to report.
  */
-export function appliedMigrationCount(config, databaseName, table = '_prisma_migrations', project) {
+export function appliedMigrationCount(
+  config,
+  databaseName,
+  table = '_prisma_migrations',
+  project,
+) {
   if (!table) return null
   if (databaseEngine(project) === 'mariadb') {
     const result = mariadbSql(
       config,
       `select count(*) from ${mariadbIdentifier(table)} where finished_at is not null`,
-      { database: databaseName }
+      { database: databaseName },
     )
     return result.ok ? Number.parseInt(result.stdout, 10) : null
   }
   const result = postgresSql(
     config,
     `select count(*) from ${table} where finished_at is not null`,
-    { database: databaseName }
+    { database: databaseName },
   )
   return result.ok ? Number.parseInt(result.stdout, 10) : null
 }
@@ -228,9 +287,16 @@ export function databaseBaselineExists(config, identity, project) {
 }
 
 /** Age of the portable SQL baseline. */
-export function databaseBaselineAgeDays(config, identity, project, { now = Date.now() } = {}) {
+export function databaseBaselineAgeDays(
+  config,
+  identity,
+  project,
+  { now = Date.now() } = {},
+) {
   const baseline = databaseBaselinePath(config, identity, project)
-  return existsSync(baseline) ? (now - statSync(baseline).mtimeMs) / 86_400_000 : null
+  return existsSync(baseline)
+    ? (now - statSync(baseline).mtimeMs) / 86_400_000
+    : null
 }
 
 export function databaseBaselineLabel(config, identity, project) {
@@ -238,7 +304,9 @@ export function databaseBaselineLabel(config, identity, project) {
 }
 
 function mariadbBaselinePath(config, identity) {
-  return databaseBaselinePath(config, identity, { database: { engine: 'mariadb' } })
+  return databaseBaselinePath(config, identity, {
+    database: { engine: 'mariadb' },
+  })
 }
 
 function databaseBaselinePath(config, identity, project) {
@@ -255,7 +323,7 @@ function dumpMariaDatabase(config, name, destination) {
   const user = shellQuote(config.mariadb.user)
   return mariadbExec(
     config,
-    `dump=$(command -v mariadb-dump || command -v mysqldump) && "$dump" --single-transaction --routines --events --triggers --hex-blob --result-file=${shellQuote(containerBaselinePath(destination))} -u ${user} ${shellQuote(name)}`
+    `dump=$(command -v mariadb-dump || command -v mysqldump) && "$dump" --single-transaction --routines --events --triggers --hex-blob --result-file=${shellQuote(containerBaselinePath(destination))} -u ${user} ${shellQuote(name)}`,
   )
 }
 
@@ -263,7 +331,7 @@ function importMariaDump(config, name, source) {
   const user = shellQuote(config.mariadb.user)
   return mariadbExec(
     config,
-    `client=$(command -v mariadb || command -v mysql) && "$client" -u ${user} ${shellQuote(name)} < ${shellQuote(containerBaselinePath(source))}`
+    `client=$(command -v mariadb || command -v mysql) && "$client" -u ${user} ${shellQuote(name)} < ${shellQuote(containerBaselinePath(source))}`,
   )
 }
 
@@ -271,7 +339,7 @@ function importPostgresDump(config, name, source) {
   const user = shellQuote(config.postgres.user)
   return postgresExec(
     config,
-    `psql -v ON_ERROR_STOP=1 -q -U ${user} -d ${shellQuote(name)} -f ${shellQuote(containerBaselinePath(source))}`
+    `psql -v ON_ERROR_STOP=1 -q -U ${user} -d ${shellQuote(name)} -f ${shellQuote(containerBaselinePath(source))}`,
   )
 }
 

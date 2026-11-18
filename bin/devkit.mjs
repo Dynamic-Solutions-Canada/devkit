@@ -19,21 +19,29 @@ import {
   readFileSync,
   symlinkSync,
   unlinkSync,
-  writeFileSync
+  writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { checkoutIdentity } from '../src/checkout-identity.mjs'
-import { devkitConfig, devkitConfigDir, devkitMarkerPath } from '../src/config.mjs'
+import {
+  devkitConfig,
+  devkitConfigDir,
+  devkitMarkerPath,
+} from '../src/config.mjs'
 import {
   dropDatabase,
   ensureCheckoutDatabase,
   resolveDatabaseIdentity,
-  snapshotBaseline
+  snapshotBaseline,
 } from '../src/database.mjs'
-import { baselineArchivePath, captureDataBaseline, restoreDataBaseline } from '../src/data-baseline.mjs'
+import {
+  baselineArchivePath,
+  captureDataBaseline,
+  restoreDataBaseline,
+} from '../src/data-baseline.mjs'
 import { execFileSync } from 'node:child_process'
 
 import {
@@ -41,7 +49,7 @@ import {
   composeUp,
   databaseCompose,
   probeDocker,
-  removeVolume
+  removeVolume,
 } from '../src/docker.mjs'
 import { selectDatabaseRuntime } from '../src/database-runtime.mjs'
 import { loadProjectConfig } from '../src/project-config.mjs'
@@ -50,12 +58,18 @@ import { bootstrapSettings, nginxConfig } from '../src/host-setup.mjs'
 import { runDoctor } from '../src/doctor.mjs'
 import { waitForDatabase } from '../src/preflight.mjs'
 import { prepareCheckout } from '../src/checkout-prepare.mjs'
-import { enterProjectRuntime, runProjectCommand } from '../src/project-runtime.mjs'
+import {
+  enterProjectRuntime,
+  runProjectCommand,
+} from '../src/project-runtime.mjs'
 import { cleanupCheckout } from '../src/checkout-cleanup.mjs'
 import { useDependencyTargets } from '../src/dependency-targets.mjs'
 import { probeProjectDependencies } from '../src/project-dependencies.mjs'
 
-const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const packageDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+)
 const repoRoot = process.cwd()
 
 function fail(message, fix) {
@@ -69,7 +83,7 @@ function requireConfig() {
   if (!config) {
     fail(
       `devkit is not enabled on this machine (no marker at ${devkitMarkerPath()})`,
-      'Run `devkit bootstrap` once per machine.'
+      'Run `devkit bootstrap` once per machine.',
     )
   }
   return config
@@ -86,14 +100,17 @@ function bootstrap(args) {
   if (existsSync('/.dockerenv')) {
     fail(
       'this configures the HOST machine, but it is running inside a container',
-      'Run it from a terminal on the machine itself, not from a devcontainer.'
+      'Run it from a terminal on the machine itself, not from a devcontainer.',
     )
   }
 
   let settings
   try {
     const marker = devkitMarkerPath()
-    settings = bootstrapSettings(args, existsSync(marker) ? JSON.parse(readFileSync(marker, 'utf8')) : {})
+    settings = bootstrapSettings(
+      args,
+      existsSync(marker) ? JSON.parse(readFileSync(marker, 'utf8')) : {},
+    )
   } catch (error) {
     fail(`invalid host settings: ${error.message}`)
   }
@@ -104,14 +121,21 @@ function bootstrap(args) {
 
   const configDir = devkitConfigDir()
   const infraDir = path.join(configDir, 'infra')
-  for (const dir of [configDir, path.join(configDir, 'routes'), path.join(configDir, 'baselines')]) {
+  for (const dir of [
+    configDir,
+    path.join(configDir, 'routes'),
+    path.join(configDir, 'baselines'),
+  ]) {
     mkdirSync(dir, { recursive: true })
   }
 
   // Copied out of node_modules because the proxy is machine-wide.
   mkdirSync(infraDir, { recursive: true })
   for (const filename of ['postgres.yml', 'mariadb.yml']) {
-    copyFileSync(path.join(packageDir, 'infra', filename), path.join(infraDir, filename))
+    copyFileSync(
+      path.join(packageDir, 'infra', filename),
+      path.join(infraDir, filename),
+    )
   }
   console.log(`  + managed infra refreshed at ${infraDir}`)
 
@@ -121,20 +145,20 @@ function bootstrap(args) {
     infraDir,
     routesDir: path.join(configDir, 'routes'),
     baselineDir: path.join(configDir, 'baselines'),
-    ...settings
+    ...settings,
   }
 
   const proxy = reconcileProxy(config)
   if (!proxy.ok) {
     fail(
       'the shared proxy lifecycle could not be reconciled',
-      `Inspect it with: docker compose -p ${config.infraProject} -f ${proxyCompose(config).files[0]} logs`
+      `Inspect it with: docker compose -p ${config.infraProject} -f ${proxyCompose(config).files[0]} logs`,
     )
   }
   console.log(
     proxy.running
       ? '  + proxy refreshed for active routes; it stops when the last one closes'
-      : '  + proxy installed and idle; it starts with the first project'
+      : '  + proxy installed and idle; it starts with the first project',
   )
 
   linkOntoPath('devkit')
@@ -146,12 +170,22 @@ function bootstrap(args) {
 
   console.log('\nDone. devkit is on for this machine.\n')
   console.log('Next:')
-  console.log('  devkit snapshot              capture a project\'s current dev data as its baseline')
-  console.log('  devkit doctor                show the state of every precondition')
-  console.log(`  devproxy add <name> <port>   give another dev server a *.${config.preferredDomain} name`)
+  console.log(
+    "  devkit snapshot              capture a project's current dev data as its baseline",
+  )
+  console.log(
+    '  devkit doctor                show the state of every precondition',
+  )
+  console.log(
+    `  devproxy add <name> <port>   give another dev server a *.${config.preferredDomain} name`,
+  )
   if (config.secondaryDomains.length) {
-    console.log(`\n  Domains: ${[config.domain, ...config.secondaryDomains].join(', ')}; preferred: ${config.preferredDomain}`)
-    console.log('  Restart existing development runners to apply hostnames and application origins.')
+    console.log(
+      `\n  Domains: ${[config.domain, ...config.secondaryDomains].join(', ')}; preferred: ${config.preferredDomain}`,
+    )
+    console.log(
+      '  Restart existing development runners to apply hostnames and application origins.',
+    )
   }
 }
 
@@ -167,7 +201,9 @@ function linkOntoPath(name) {
 
   const localBin = path.join(os.homedir(), '.local', 'bin')
   if (!existsSync(localBin)) {
-    console.log(`  ! ${localBin} does not exist, so ${name} was not put on your PATH`)
+    console.log(
+      `  ! ${localBin} does not exist, so ${name} was not put on your PATH`,
+    )
     return
   }
   const link = path.join(localBin, name)
@@ -189,20 +225,36 @@ async function snapshot(config) {
   startDatabase(config, project)
 
   if (!identity.isPrimary) {
-    console.log(`Note: capturing from worktree "${identity.worktreeName}" rather than the primary checkout.`)
+    console.log(
+      `Note: capturing from worktree "${identity.worktreeName}" rather than the primary checkout.`,
+    )
   }
   const result = snapshotBaseline(config, identity, project)
   if (!result.ok) fail(`database snapshot failed: ${result.error}`)
-  console.log(`  + ${result.baseline} captured from ${result.source} (previous kept as ${result.previous})`)
+  console.log(
+    `  + ${result.baseline} captured from ${result.source} (previous kept as ${result.previous})`,
+  )
 
   if (project.baselinePaths.length === 0) {
-    console.log('  + no baselinePaths configured, so only the database was captured')
+    console.log(
+      '  + no baselinePaths configured, so only the database was captured',
+    )
   } else {
-    const captured = captureDataBaseline(config, identity, repoRoot, project.baselinePaths)
-    if (captured.ok) console.log(`  + ${baselineArchivePath(config, identity)} (${(captured.bytes / 1_048_576).toFixed(1)} MB)`)
+    const captured = captureDataBaseline(
+      config,
+      identity,
+      repoRoot,
+      project.baselinePaths,
+    )
+    if (captured.ok)
+      console.log(
+        `  + ${baselineArchivePath(config, identity)} (${(captured.bytes / 1_048_576).toFixed(1)} MB)`,
+      )
     else console.log(`  ! data capture failed: ${captured.error}`)
   }
-  console.log('\nNew checkouts will clone from this. Existing ones are untouched.')
+  console.log(
+    '\nNew checkouts will clone from this. Existing ones are untouched.',
+  )
 }
 
 async function reset(config, args) {
@@ -214,22 +266,29 @@ async function reset(config, args) {
   if (identity.isPrimary) {
     fail(
       'refusing to reset the primary checkout',
-      'That database is the real dev data a baseline is captured FROM, not a disposable copy.'
+      'That database is the real dev data a baseline is captured FROM, not a disposable copy.',
     )
   }
   startDatabase(config, project)
 
   const dropped = dropDatabase(config, identity.databaseName, project)
-  if (!dropped.ok) fail(`could not drop ${identity.databaseName}: ${dropped.error}`)
+  if (!dropped.ok)
+    fail(`could not drop ${identity.databaseName}: ${dropped.error}`)
 
   if (args.includes('--empty')) {
-    return console.log(`  + ${identity.databaseName} dropped; the next dev start builds it from migrations`)
+    return console.log(
+      `  + ${identity.databaseName} dropped; the next dev start builds it from migrations`,
+    )
   }
   const created = ensureCheckoutDatabase(config, identity, project)
   if (created.error) fail(created.error)
   console.log(`  + ${identity.databaseName} re-created from ${created.sourced}`)
   const restored = restoreDataBaseline(config, identity, repoRoot)
-  console.log(restored.ok ? '  + data/ left as-is (delete it and re-run dev to reseed)' : '  + database reset')
+  console.log(
+    restored.ok
+      ? '  + data/ left as-is (delete it and re-run dev to reseed)'
+      : '  + database reset',
+  )
 }
 
 function startDatabase(config, project) {
@@ -237,9 +296,12 @@ function startDatabase(config, project) {
   const started = composeUp(database.project, database.files, {
     cwd: config.infraDir,
     env: database.env,
-    services: [database.service]
+    services: [database.service],
   })
-  if (!started) fail(`the ${project.database.engine}:${config.databaseRuntime.version} database could not be started`)
+  if (!started)
+    fail(
+      `the ${project.database.engine}:${config.databaseRuntime.version} database could not be started`,
+    )
   try {
     waitForDatabase(config, project)
   } catch (error) {
@@ -262,23 +324,35 @@ async function prune(config, args) {
   const identity = resolveDatabaseIdentity(checkout, project)
 
   const live = new Set(liveComposeProjects())
-  const orphans = checkoutDatabaseVolumes(identity.repoName).filter(({ project }) => !live.has(project))
+  const orphans = checkoutDatabaseVolumes(identity.repoName).filter(
+    ({ project }) => !live.has(project),
+  )
   if (orphans.length === 0) {
-    return console.log('Nothing to prune: every checkout database volume has a matching worktree.')
+    return console.log(
+      'Nothing to prune: every checkout database volume has a matching worktree.',
+    )
   }
   if (!args.includes('--yes')) {
     console.log('Would remove database volumes:')
-    for (const orphan of orphans) console.log(`  ${orphan.name} (${orphan.project})`)
+    for (const orphan of orphans)
+      console.log(`  ${orphan.name} (${orphan.project})`)
     return console.log('\nRe-run with --yes to actually remove them.')
   }
   for (const orphan of orphans) {
     const removed = removeVolume(orphan.name)
-    console.log(removed.ok ? `  + removed ${orphan.name}` : `  ! ${orphan.name}: ${removed.error}`)
+    console.log(
+      removed.ok
+        ? `  + removed ${orphan.name}`
+        : `  ! ${orphan.name}: ${removed.error}`,
+    )
   }
 }
 
 function liveComposeProjects() {
-  const output = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repoRoot, encoding: 'utf8' })
+  const output = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
   return output
     .split('\n')
     .filter((line) => line.startsWith('worktree '))
@@ -292,9 +366,13 @@ async function infra(config) {
   const proxyStarted = composeUp(proxy.project, proxy.files, {
     cwd: proxy.cwd,
     env: proxy.env,
-    services: ['proxy']
+    services: ['proxy'],
   })
-  if (!proxyStarted) fail('the shared proxy could not be started', `docker compose -p ${config.infraProject} logs proxy`)
+  if (!proxyStarted)
+    fail(
+      'the shared proxy could not be started',
+      `docker compose -p ${config.infraProject} logs proxy`,
+    )
 
   const checkout = checkoutIdentity(repoRoot)
   if (!checkout) {
@@ -307,10 +385,15 @@ async function infra(config) {
   const databaseStarted = composeUp(database.project, database.files, {
     cwd: config.infraDir,
     env: database.env,
-    services: [database.service]
+    services: [database.service],
   })
-  if (!databaseStarted) fail(`the ${project.database.engine}:${config.databaseRuntime.version} database could not be started`)
-  console.log(`  + proxy and ${project.database.engine}:${config.databaseRuntime.version} database running`)
+  if (!databaseStarted)
+    fail(
+      `the ${project.database.engine}:${config.databaseRuntime.version} database could not be started`,
+    )
+  console.log(
+    `  + proxy and ${project.database.engine}:${config.databaseRuntime.version} database running`,
+  )
 }
 
 /** `devkit use`: show or choose which checkout of each declared dependency this checkout uses. */
@@ -319,7 +402,13 @@ async function use(config, args) {
   if (!identity) fail(`${repoRoot} is not a git checkout`)
   try {
     const project = await loadProjectConfig(repoRoot)
-    await useDependencyTargets({ config, identity, project, args, probe: probeProjectDependencies })
+    await useDependencyTargets({
+      config,
+      identity,
+      project,
+      args,
+      probe: probeProjectDependencies,
+    })
   } catch (error) {
     fail(error.message)
   }
@@ -354,7 +443,12 @@ switch (command) {
     try {
       const unknown = args.find((arg) => !['--yes', '--paseo'].includes(arg))
       if (unknown) throw new Error(`unknown cleanup option: ${unknown}`)
-      await cleanupCheckout({ repoRoot, config: requireConfig(), yes: args.includes('--yes'), paseo: args.includes('--paseo') })
+      await cleanupCheckout({
+        repoRoot,
+        config: requireConfig(),
+        yes: args.includes('--yes'),
+        paseo: args.includes('--paseo'),
+      })
     } catch (error) {
       fail(error.message)
     }

@@ -10,17 +10,17 @@ This repo follows the shared standards at https://github.com/Dynamic-Solutions-C
 
 devkit owns a hostname, port and database per checkout and worktree, the routing proxy, `devkit.config.mjs`, the `devkit` and `devproxy` commands, and development data snapshots. It does not own production deployment, CI, or an app's own dev processes; it may supply templates that are written into an app, but it is never a runtime or production dependency of one.
 
-| Area | Files |
-| --- | --- |
-| Command-line entry points | `bin/devkit.mjs`, `bin/devproxy.mjs` |
-| Public API (`.` and `./identity` exports) | `src/index.mjs`, `src/checkout-identity.mjs` |
-| Checkout lifecycle: prepare, install, run, Compose, cleanup | `src/checkout-*.mjs`, `src/background-runner.mjs` |
-| Project config and pinned Node runtime | `src/project-config.mjs`, `src/project-runtime.mjs`, `src/config.mjs` |
-| Proxy, host routing and remote preflight | `src/proxy.mjs`, `src/host-routing.mjs`, `src/host-setup.mjs`, `src/preflight.mjs` |
-| Databases and baselines | `src/database*.mjs`, `src/data-baseline.mjs` |
-| Dependencies on other checkouts | `src/project-dependencies.mjs`, `src/dependency-targets.mjs` |
-| Compose definitions installed by bootstrap | `infra/` |
-| VS Code browser bridge | `vscode-extension/`, built by `scripts/build-browser-extension.mjs` |
+| Area                                                        | Files                                                                              |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Command-line entry points                                   | `bin/devkit.mjs`, `bin/devproxy.mjs`                                               |
+| Public API (`.` and `./identity` exports)                   | `src/index.mjs`, `src/checkout-identity.mjs`                                       |
+| Checkout lifecycle: prepare, install, run, Compose, cleanup | `src/checkout-*.mjs`, `src/background-runner.mjs`                                  |
+| Project config and pinned Node runtime                      | `src/project-config.mjs`, `src/project-runtime.mjs`, `src/config.mjs`              |
+| Proxy, host routing and remote preflight                    | `src/proxy.mjs`, `src/host-routing.mjs`, `src/host-setup.mjs`, `src/preflight.mjs` |
+| Databases and baselines                                     | `src/database*.mjs`, `src/data-baseline.mjs`                                       |
+| Dependencies on other checkouts                             | `src/project-dependencies.mjs`, `src/dependency-targets.mjs`                       |
+| Compose definitions installed by bootstrap                  | `infra/`                                                                           |
+| VS Code browser bridge                                      | `vscode-extension/`, built by `scripts/build-browser-extension.mjs`                |
 
 ## Conventions and gotchas
 
@@ -32,20 +32,20 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 
 ## Commands
 
-| Command | Proves | Does not prove |
-| --- | --- | --- |
-| `npm test` | The unit tests pass on this Node | Behaviour against a live proxy, Docker or Paseo; one host-listener test skips itself without them |
-| `npm run build:browser-extension` | The VS Code browser bridge packages into a `.vsix` | That the extension works in VS Code |
+| Command                           | Proves                                             | Does not prove                                                                                    |
+| --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm test`                        | The unit tests pass on this Node                   | Behaviour against a live proxy, Docker or Paseo; one host-listener test skips itself without them |
+| `npm run build:browser-extension` | The VS Code browser bridge packages into a `.vsix` | That the extension works in VS Code                                                               |
 
 ## Guidance map
 
-| Guide, doc, or skill | Read or use when | Governs |
-| --- | --- | --- |
-| `README.md` | Changing any command, config option or setup step | How apps install, configure and run devkit |
+| Guide, doc, or skill | Read or use when                                  | Governs                                    |
+| -------------------- | ------------------------------------------------- | ------------------------------------------ |
+| `README.md`          | Changing any command, config option or setup step | How apps install, configure and run devkit |
 
 ## Keeping docs current
 
-| What changed | Update |
-| --- | --- |
-| A command, option or `devkit.config.mjs` field | `README.md` |
-| An area or entry point moved | The Architecture table above |
+| What changed                                   | Update                       |
+| ---------------------------------------------- | ---------------------------- |
+| A command, option or `devkit.config.mjs` field | `README.md`                  |
+| An area or entry point moved                   | The Architecture table above |

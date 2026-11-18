@@ -31,7 +31,10 @@ import { normalizeHostRouting } from './host-routing.mjs'
  */
 export function devkitConfigDir() {
   if (process.env.DEVKIT_CONFIG_DIR) return process.env.DEVKIT_CONFIG_DIR
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'), 'devkit')
+  return path.join(
+    process.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'),
+    'devkit',
+  )
 }
 
 export function devkitMarkerPath() {
@@ -42,7 +45,9 @@ export function devkitMarkerPath() {
 function inContainer() {
   if (existsSync('/.dockerenv')) return true
   try {
-    return /docker|containerd|podman|kubepods/.test(readFileSync('/proc/self/cgroup', 'utf8'))
+    return /docker|containerd|podman|kubepods/.test(
+      readFileSync('/proc/self/cgroup', 'utf8'),
+    )
   } catch {
     return false
   }
@@ -58,7 +63,10 @@ function inContainer() {
  * rule that cannot be exercised from inside the devcontainer the tests run in, and it is also the
  * rule most worth pinning, so it is injectable. Production callers pass nothing.
  */
-export function devkitConfig({ warn = console.warn, containerCheck = inContainer } = {}) {
+export function devkitConfig({
+  warn = console.warn,
+  containerCheck = inContainer,
+} = {}) {
   if (process.env.DEVKIT === '0') return null
   if (containerCheck()) return null
 
@@ -87,7 +95,7 @@ export function devkitConfig({ warn = console.warn, containerCheck = inContainer
     ...routing,
     postgres: { user: 'postgres', password: 'postgres' },
     mariadb: { user: 'root', password: 'root' },
-    baselineMaxAgeDays: 14
+    baselineMaxAgeDays: 14,
   }
 }
 
@@ -97,7 +105,11 @@ export function devkitConfig({ warn = console.warn, containerCheck = inContainer
  * There is deliberately no admin/maintenance equivalent here: every CREATE/DROP runs inside the
  * selected database container via `docker.mjs`, so nothing on the host needs a database client.
  */
-export function checkoutConnectionUrl(config, databaseName, engine = 'postgres') {
+export function checkoutConnectionUrl(
+  config,
+  databaseName,
+  engine = 'postgres',
+) {
   const settings = config[engine]
   const credentials = `${encodeURIComponent(settings.user)}:${encodeURIComponent(settings.password)}`
   const origin = `${settings.host}:${settings.port}/${databaseName}`
@@ -111,18 +123,24 @@ export function checkoutDatabase(config, databaseName, engine = 'postgres') {
   const { host, port, user, password } = config[engine]
   return {
     engine,
-    ...(config.databaseRuntime?.version ? { version: config.databaseRuntime.version } : {}),
+    ...(config.databaseRuntime?.version
+      ? { version: config.databaseRuntime.version }
+      : {}),
     name: databaseName,
     host,
     port,
     user,
     password,
-    url: checkoutConnectionUrl(config, databaseName, engine)
+    url: checkoutConnectionUrl(config, databaseName, engine),
   }
 }
 
 /** Loopback connection descriptor for a checkout whose project opted into host database access. */
-export function checkoutHostDatabase(config, databaseName, engine = 'postgres') {
+export function checkoutHostDatabase(
+  config,
+  databaseName,
+  engine = 'postgres',
+) {
   const hostPort = config.databaseRuntime?.hostPort
   if (!hostPort) return null
   const settings = { ...config[engine], host: '127.0.0.1', port: hostPort }
@@ -131,6 +149,10 @@ export function checkoutHostDatabase(config, databaseName, engine = 'postgres') 
     version: config.databaseRuntime.version,
     name: databaseName,
     ...settings,
-    url: checkoutConnectionUrl({ ...config, [engine]: settings }, databaseName, engine)
+    url: checkoutConnectionUrl(
+      { ...config, [engine]: settings },
+      databaseName,
+      engine,
+    ),
   }
 }

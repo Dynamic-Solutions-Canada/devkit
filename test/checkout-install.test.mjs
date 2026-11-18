@@ -7,7 +7,7 @@ import {
   readlinkSync,
   rmSync,
   symlinkSync,
-  writeFileSync
+  writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -17,18 +17,22 @@ import {
   detectedPackageManagerIdentity,
   ensureCheckoutInstall,
   ensureInstallBackupIgnored,
-  installFingerprint
+  installFingerprint,
 } from '../src/checkout-install.mjs'
 
 const sandboxes = []
 afterEach(() => {
-  for (const sandbox of sandboxes.splice(0)) rmSync(sandbox, { recursive: true, force: true })
+  for (const sandbox of sandboxes.splice(0))
+    rmSync(sandbox, { recursive: true, force: true })
 })
 
 function checkout() {
   const repoRoot = mkdtempSync(path.join(os.tmpdir(), 'devkit-install-'))
   sandboxes.push(repoRoot)
-  writeFileSync(path.join(repoRoot, 'package-lock.json'), '{"lockfileVersion":3}\n')
+  writeFileSync(
+    path.join(repoRoot, 'package-lock.json'),
+    '{"lockfileVersion":3}\n',
+  )
   writeFileSync(path.join(repoRoot, '.nvmrc'), '22.22.3\n')
   return repoRoot
 }
@@ -43,7 +47,7 @@ test('transactional dependency backups are locally ignored without changing proj
   assert.equal(ensureInstallBackupIgnored(repoRoot, 'node_modules'), false)
   assert.equal(
     readFileSync(excludePath, 'utf8'),
-    '# existing local excludes\n# Devkit transactional dependency backup\n/node_modules.devkit-backup-*\n'
+    '# existing local excludes\n# Devkit transactional dependency backup\n/node_modules.devkit-backup-*\n',
   )
 })
 
@@ -51,8 +55,8 @@ const project = {
   install: {
     command: ['npm', 'ci'],
     inputs: ['package-lock.json', '.nvmrc'],
-    output: 'node_modules'
-  }
+    output: 'node_modules',
+  },
 }
 
 function fakeInstall(status = 0) {
@@ -63,13 +67,19 @@ function fakeInstall(status = 0) {
 }
 
 test('a project with no install declaration is left alone', () => {
-  assert.deepEqual(ensureCheckoutInstall({ repoRoot: checkout(), project: {} }), { installed: false })
+  assert.deepEqual(
+    ensureCheckoutInstall({ repoRoot: checkout(), project: {} }),
+    { installed: false },
+  )
 })
 
 test('a direct CLI call derives the same package-manager identity', () => {
   assert.equal(
-    detectedPackageManagerIdentity('npm', () => ({ status: 0, stdout: '10.9.8\n' })),
-    `npm/10.9.8 node/v${process.versions.node} ${process.platform} ${process.arch} workspaces/false`
+    detectedPackageManagerIdentity('npm', () => ({
+      status: 0,
+      stdout: '10.9.8\n',
+    })),
+    `npm/10.9.8 node/v${process.versions.node} ${process.platform} ${process.arch} workspaces/false`,
   )
 })
 
@@ -80,11 +90,11 @@ test('npm identity survives a sandbox that blocks child processes', () => {
       () => ({
         status: 0,
         stdout: '',
-        error: Object.assign(new Error('blocked'), { code: 'EPERM' })
+        error: Object.assign(new Error('blocked'), { code: 'EPERM' }),
       }),
-      () => '10.9.8'
+      () => '10.9.8',
     ),
-    `npm/10.9.8 node/v${process.versions.node} ${process.platform} ${process.arch} workspaces/false`
+    `npm/10.9.8 node/v${process.versions.node} ${process.platform} ${process.arch} workspaces/false`,
   )
 })
 
@@ -96,27 +106,36 @@ test('a matching local install is reused', () => {
     repoRoot,
     install: project.install,
     nodeVersion: '22.22.3',
-    packageManagerIdentity: 'npm/10.9.8'
+    packageManagerIdentity: 'npm/10.9.8',
   })
-  writeFileSync(path.join(outputPath, '.devkit-install.json'), JSON.stringify({ fingerprint }))
+  writeFileSync(
+    path.join(outputPath, '.devkit-install.json'),
+    JSON.stringify({ fingerprint }),
+  )
 
   const result = ensureCheckoutInstall({
     repoRoot,
     project,
     nodeVersion: '22.22.3',
     packageManagerIdentity: 'npm/10.9.8',
-    run: () => assert.fail('matching dependencies must not be reinstalled')
+    run: () => assert.fail('matching dependencies must not be reinstalled'),
   })
   assert.deepEqual(result, { installed: false })
 })
 
 test('an external symlink is replaced with a local install', () => {
   const repoRoot = checkout()
-  const external = mkdtempSync(path.join(os.tmpdir(), 'devkit-external-install-'))
+  const external = mkdtempSync(
+    path.join(os.tmpdir(), 'devkit-external-install-'),
+  )
   sandboxes.push(external)
   symlinkSync(external, path.join(repoRoot, 'node_modules'), 'dir')
 
-  const result = ensureCheckoutInstall({ repoRoot, project, run: fakeInstall() })
+  const result = ensureCheckoutInstall({
+    repoRoot,
+    project,
+    run: fakeInstall(),
+  })
 
   assert.deepEqual(result, { installed: true })
   assert.throws(() => readlinkSync(path.join(repoRoot, 'node_modules')))
@@ -125,11 +144,16 @@ test('an external symlink is replaced with a local install', () => {
 test('a directory containing borrowed symlinks is moved before installation', () => {
   const repoRoot = checkout()
   const outputPath = path.join(repoRoot, 'node_modules')
-  const external = mkdtempSync(path.join(os.tmpdir(), 'devkit-external-install-'))
+  const external = mkdtempSync(
+    path.join(os.tmpdir(), 'devkit-external-install-'),
+  )
   sandboxes.push(external)
   mkdirSync(outputPath)
   writeFileSync(path.join(external, 'package.json'), '{}\n')
-  symlinkSync(path.join(external, 'package.json'), path.join(outputPath, 'package.json'))
+  symlinkSync(
+    path.join(external, 'package.json'),
+    path.join(outputPath, 'package.json'),
+  )
 
   const result = ensureCheckoutInstall({
     repoRoot,
@@ -138,7 +162,7 @@ test('a directory containing borrowed symlinks is moved before installation', ()
       assert.equal(existsSync(path.join(root, 'node_modules')), false)
       mkdirSync(path.join(root, 'node_modules'))
       return { status: 0 }
-    }
+    },
   })
 
   assert.deepEqual(result, { installed: true })
@@ -148,13 +172,15 @@ test('a directory containing borrowed symlinks is moved before installation', ()
 
 test('a failed install restores the external symlink and removes partial output', () => {
   const repoRoot = checkout()
-  const external = mkdtempSync(path.join(os.tmpdir(), 'devkit-external-install-'))
+  const external = mkdtempSync(
+    path.join(os.tmpdir(), 'devkit-external-install-'),
+  )
   sandboxes.push(external)
   symlinkSync(external, path.join(repoRoot, 'node_modules'), 'dir')
 
   assert.throws(
     () => ensureCheckoutInstall({ repoRoot, project, run: fakeInstall(1) }),
-    /npm ci exited with status 1/
+    /npm ci exited with status 1/,
   )
   assert.equal(readlinkSync(path.join(repoRoot, 'node_modules')), external)
 })
@@ -167,9 +193,12 @@ test('a failed install restores an existing local dependency tree', () => {
 
   assert.throws(
     () => ensureCheckoutInstall({ repoRoot, project, run: fakeInstall(1) }),
-    /npm ci exited with status 1/
+    /npm ci exited with status 1/,
   )
-  assert.equal(readFileSync(path.join(outputPath, 'sentinel'), 'utf8'), 'original\n')
+  assert.equal(
+    readFileSync(path.join(outputPath, 'sentinel'), 'utf8'),
+    'original\n',
+  )
 })
 
 test('a changed input or runtime refreshes the install', () => {
@@ -179,9 +208,12 @@ test('a changed input or runtime refreshes the install', () => {
     project,
     nodeVersion: '22.22.3',
     packageManagerIdentity: 'npm/10.9.8',
-    run: fakeInstall()
+    run: fakeInstall(),
   })
-  writeFileSync(path.join(repoRoot, 'package-lock.json'), '{"lockfileVersion":3,"changed":true}\n')
+  writeFileSync(
+    path.join(repoRoot, 'package-lock.json'),
+    '{"lockfileVersion":3,"changed":true}\n',
+  )
 
   let installs = 0
   ensureCheckoutInstall({
@@ -193,7 +225,7 @@ test('a changed input or runtime refreshes the install', () => {
       installs += 1
       rmSync(path.join(root, 'node_modules'), { recursive: true, force: true })
       return fakeInstall()(command, args, root)
-    }
+    },
   })
   assert.equal(installs, 1)
 })

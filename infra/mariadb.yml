@@ -15,7 +15,11 @@ services:
       MARIADB_ROOT_PASSWORD: ${DEVKIT_DATABASE_PASSWORD:?database password is required}
       MYSQL_ROOT_PASSWORD: ${DEVKIT_DATABASE_PASSWORD:?database password is required}
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root --password=$${MYSQL_ROOT_PASSWORD} --silent"]
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -u root --password=$${MYSQL_ROOT_PASSWORD} --silent",
+        ]
       interval: 5s
       timeout: 3s
       retries: 20

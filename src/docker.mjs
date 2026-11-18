@@ -12,7 +12,9 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-const DATABASE_HOST_COMPOSE = fileURLToPath(new URL('../infra/database-host.yml', import.meta.url))
+const DATABASE_HOST_COMPOSE = fileURLToPath(
+  new URL('../infra/database-host.yml', import.meta.url),
+)
 
 /** Postgres service name inside the infra Compose project. */
 function run(command, args, options = {}) {
@@ -30,13 +32,17 @@ function run(command, args, options = {}) {
 export function probeDocker() {
   const result = run('docker', ['version', '--format', '{{.Server.Version}}'])
   if (result.error?.code === 'ENOENT') {
-    return { ok: false, reason: 'the `docker` CLI is not on PATH', fix: 'Install Docker Desktop and enable WSL integration for this distro.' }
+    return {
+      ok: false,
+      reason: 'the `docker` CLI is not on PATH',
+      fix: 'Install Docker Desktop and enable WSL integration for this distro.',
+    }
   }
   if (result.status !== 0) {
     return {
       ok: false,
       reason: 'the Docker daemon is not reachable',
-      fix: 'Start Docker Desktop on Windows (Settings -> Resources -> WSL Integration must include this distro).'
+      fix: 'Start Docker Desktop on Windows (Settings -> Resources -> WSL Integration must include this distro).',
     }
   }
   return { ok: true, version: result.stdout.trim() }
@@ -45,52 +51,113 @@ export function probeDocker() {
 /** Names of the running containers in a Compose project, empty when the project is down. */
 export function composeContainers(project) {
   const result = run('docker', [
-    'ps', '--filter', `label=com.docker.compose.project=${project}`,
-    '--filter', 'status=running', '--format', '{{.Label "com.docker.compose.service"}}'
+    'ps',
+    '--filter',
+    `label=com.docker.compose.project=${project}`,
+    '--filter',
+    'status=running',
+    '--format',
+    '{{.Label "com.docker.compose.service"}}',
   ])
   if (result.status !== 0) return []
-  return result.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
+  return result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
 }
 
 /**
  * Brings the shared infra stack up. Idempotent: Compose no-ops when the containers already match,
  * which is why the preflight can call this on every `npm run dev` without paying for it.
  */
-export function composeUp(project, files, { cwd, services = [], env, wait = false, removeOrphans = false } = {}) {
+export function composeUp(
+  project,
+  files,
+  { cwd, services = [], env, wait = false, removeOrphans = false } = {},
+) {
   const args = ['compose', '-p', project]
   for (const file of files) args.push('-f', file)
-  args.push('up', '-d', ...(wait ? ['--wait', '--wait-timeout', '10'] : []), ...(removeOrphans ? ['--remove-orphans'] : []), ...services)
-  const result = run('docker', args, { cwd, stdio: 'inherit', env: env ? { ...process.env, ...env } : process.env })
+  args.push(
+    'up',
+    '-d',
+    ...(wait ? ['--wait', '--wait-timeout', '10'] : []),
+    ...(removeOrphans ? ['--remove-orphans'] : []),
+    ...services,
+  )
+  const result = run('docker', args, {
+    cwd,
+    stdio: 'inherit',
+    env: env ? { ...process.env, ...env } : process.env,
+  })
   return result.status === 0
 }
 
 /** Stops only an optional proxy listener, preserving other services and volumes. */
-export function composeRemoveServices(project, files, { cwd, env, services = [] } = {}) {
+export function composeRemoveServices(
+  project,
+  files,
+  { cwd, env, services = [] } = {},
+) {
   const args = ['compose', '-p', project]
   for (const file of files) args.push('-f', file)
   args.push('rm', '--stop', '--force', ...services)
-  return run('docker', args, { cwd, stdio: 'inherit', env: { ...process.env, ...env } }).status === 0
+  return (
+    run('docker', args, {
+      cwd,
+      stdio: 'inherit',
+      env: { ...process.env, ...env },
+    }).status === 0
+  )
 }
 
 /** Removes a Compose project and its containers while preserving named volumes. */
-export function composeDown(project, files, { cwd, env, runCommand = run } = {}) {
+export function composeDown(
+  project,
+  files,
+  { cwd, env, runCommand = run } = {},
+) {
   // Compose emits a warning when `down` targets a project that has never created any
   // resources. Check containers in every state and project networks first so stopped
   // containers and leftover networks still get cleaned up. If either probe fails, run
   // `down` anyway; its result remains the source of truth for real Docker failures.
-  const containerProbe = runCommand('docker', [
-    'ps', '-a', '-q', '--filter', `label=com.docker.compose.project=${project}`
-  ], { cwd, env: env ? { ...process.env, ...env } : process.env })
-  const networkProbe = runCommand('docker', [
-    'network', 'ls', '-q', '--filter', `label=com.docker.compose.project=${project}`
-  ], { cwd, env: env ? { ...process.env, ...env } : process.env })
-  if (containerProbe.status === 0 && networkProbe.status === 0 &&
-      !containerProbe.stdout.trim() && !networkProbe.stdout.trim()) return true
+  const containerProbe = runCommand(
+    'docker',
+    [
+      'ps',
+      '-a',
+      '-q',
+      '--filter',
+      `label=com.docker.compose.project=${project}`,
+    ],
+    { cwd, env: env ? { ...process.env, ...env } : process.env },
+  )
+  const networkProbe = runCommand(
+    'docker',
+    [
+      'network',
+      'ls',
+      '-q',
+      '--filter',
+      `label=com.docker.compose.project=${project}`,
+    ],
+    { cwd, env: env ? { ...process.env, ...env } : process.env },
+  )
+  if (
+    containerProbe.status === 0 &&
+    networkProbe.status === 0 &&
+    !containerProbe.stdout.trim() &&
+    !networkProbe.stdout.trim()
+  )
+    return true
 
   const args = ['compose', '-p', project]
   for (const file of files) args.push('-f', file)
   args.push('down', '--remove-orphans')
-  const result = runCommand('docker', args, { cwd, stdio: 'inherit', env: env ? { ...process.env, ...env } : process.env })
+  const result = runCommand('docker', args, {
+    cwd,
+    stdio: 'inherit',
+    env: env ? { ...process.env, ...env } : process.env,
+  })
   return result.status === 0
 }
 
@@ -99,20 +166,21 @@ export function infraComposeEnv(config) {
   return {
     DEVKIT_ROUTES_DIR: config.routesDir,
     DEVKIT_PROXY_PORT: String(config.proxyPort ?? 80),
-    DEVKIT_PROXY_BIND_ADDRESS: config.proxyBindAddress ?? '127.0.0.1'
+    DEVKIT_PROXY_BIND_ADDRESS: config.proxyBindAddress ?? '127.0.0.1',
   }
 }
 
 /** Compose invocation for this checkout's database. */
 export function databaseCompose(config) {
   const runtime = config.databaseRuntime
-  if (!runtime) throw new Error('devkit: database runtime has not been selected')
+  if (!runtime)
+    throw new Error('devkit: database runtime has not been selected')
   const settings = config[runtime.engine]
   return {
     project: runtime.project,
     files: [
       runtime.composeFile,
-      ...(runtime.hostPort ? [DATABASE_HOST_COMPOSE] : [])
+      ...(runtime.hostPort ? [DATABASE_HOST_COMPOSE] : []),
     ],
     service: runtime.service,
     env: {
@@ -124,19 +192,25 @@ export function databaseCompose(config) {
       ...(runtime.hostPort
         ? {
             DEVKIT_DATABASE_HOST_PORT: String(runtime.hostPort),
-            DEVKIT_DATABASE_INTERNAL_PORT: runtime.engine === 'mariadb' ? '3306' : '5432'
+            DEVKIT_DATABASE_INTERNAL_PORT:
+              runtime.engine === 'mariadb' ? '3306' : '5432',
           }
-        : {})
-    }
+        : {}),
+    },
   }
 }
 
 /** Resolves a Compose service to its container id, or null when it is not running. */
 export function composeContainerId(project, service) {
   const result = run('docker', [
-    'ps', '-q', '--filter', `label=com.docker.compose.project=${project}`,
-    '--filter', `label=com.docker.compose.service=${service}`,
-    '--filter', 'status=running'
+    'ps',
+    '-q',
+    '--filter',
+    `label=com.docker.compose.project=${project}`,
+    '--filter',
+    `label=com.docker.compose.service=${service}`,
+    '--filter',
+    'status=running',
   ])
   const id = result.status === 0 ? result.stdout.trim().split('\n')[0] : ''
   return id || null
@@ -145,9 +219,12 @@ export function composeContainerId(project, service) {
 /** Checkout database volumes belonging to one repository, including stopped Compose projects. */
 export function checkoutDatabaseVolumes(repoName) {
   const result = run('docker', [
-    'volume', 'ls',
-    '--filter', 'label=com.docker.compose.volume=database',
-    '--format', '{{.Name}}\t{{.Label "com.docker.compose.project"}}'
+    'volume',
+    'ls',
+    '--filter',
+    'label=com.docker.compose.volume=database',
+    '--format',
+    '{{.Name}}\t{{.Label "com.docker.compose.project"}}',
   ])
   if (result.status !== 0) return []
 
@@ -159,7 +236,10 @@ export function checkoutDatabaseVolumes(repoName) {
       const [name, project] = line.split('\t')
       return { name, project }
     })
-    .filter(({ project }) => project === repoName || project.startsWith(`${repoName}-wt-`))
+    .filter(
+      ({ project }) =>
+        project === repoName || project.startsWith(`${repoName}-wt-`),
+    )
 }
 
 /** Removes one explicitly resolved Docker volume, returning Docker's error when it is still used. */
@@ -167,7 +247,14 @@ export function removeVolume(name) {
   const result = run('docker', ['volume', 'rm', name])
   return result.status === 0
     ? { ok: true }
-    : { ok: false, error: (result.stderr || result.stdout || 'Docker refused the removal').trim() }
+    : {
+        ok: false,
+        error: (
+          result.stderr ||
+          result.stdout ||
+          'Docker refused the removal'
+        ).trim(),
+      }
 }
 
 /**
@@ -181,17 +268,21 @@ export function removeVolume(name) {
 export function postgresExec(config, script, { input } = {}) {
   const runtime = selectedDatabaseContainer(config, 'postgres')
   const containerId = composeContainerId(runtime.project, runtime.service)
-  if (!containerId) return { ok: false, stderr: 'the checkout Postgres container is not running' }
+  if (!containerId)
+    return {
+      ok: false,
+      stderr: 'the checkout Postgres container is not running',
+    }
 
   const result = run(
     'docker',
     ['exec', '-i', '-e', 'PGPASSWORD', containerId, 'sh', '-c', script],
-    { input, env: { ...process.env, PGPASSWORD: config.postgres.password } }
+    { input, env: { ...process.env, PGPASSWORD: config.postgres.password } },
   )
   return {
     ok: result.status === 0,
     stdout: (result.stdout ?? '').trim(),
-    stderr: (result.stderr ?? '').trim()
+    stderr: (result.stderr ?? '').trim(),
   }
 }
 
@@ -204,30 +295,38 @@ export function postgresExec(config, script, { input } = {}) {
  */
 export function postgresSql(config, sql, { database = 'postgres' } = {}) {
   const user = config.postgres.user
-  return postgresExec(config, `psql -v ON_ERROR_STOP=1 -U ${user} -d ${database} -tAc ${shellQuote(sql)}`)
+  return postgresExec(
+    config,
+    `psql -v ON_ERROR_STOP=1 -U ${user} -d ${database} -tAc ${shellQuote(sql)}`,
+  )
 }
 
 /** Runs a command inside the selected MariaDB container without exposing its password in argv. */
 export function mariadbExec(config, script, { input } = {}) {
   const runtime = selectedDatabaseContainer(config, 'mariadb')
   const containerId = composeContainerId(runtime.project, runtime.service)
-  if (!containerId) return { ok: false, stderr: 'the checkout MariaDB container is not running' }
+  if (!containerId)
+    return {
+      ok: false,
+      stderr: 'the checkout MariaDB container is not running',
+    }
 
   const result = run(
     'docker',
     ['exec', '-i', '-e', 'MYSQL_PWD', containerId, 'sh', '-c', script],
-    { input, env: { ...process.env, MYSQL_PWD: config.mariadb.password } }
+    { input, env: { ...process.env, MYSQL_PWD: config.mariadb.password } },
   )
   return {
     ok: result.status === 0,
     stdout: (result.stdout ?? '').trim(),
-    stderr: (result.stderr ?? '').trim()
+    stderr: (result.stderr ?? '').trim(),
   }
 }
 
 function selectedDatabaseContainer(config, engine) {
   const runtime = config.databaseRuntime
-  if (runtime?.engine !== engine) throw new Error(`devkit: ${engine} is not this checkout's database`)
+  if (runtime?.engine !== engine)
+    throw new Error(`devkit: ${engine} is not this checkout's database`)
   return runtime
 }
 
@@ -235,7 +334,10 @@ function selectedDatabaseContainer(config, engine) {
 export function mariadbSql(config, sql, { database } = {}) {
   const user = shellQuote(config.mariadb.user)
   const selected = database ? ` ${shellQuote(database)}` : ''
-  return mariadbExec(config, `client=$(command -v mariadb || command -v mysql) && "$client" --batch --skip-column-names -u ${user}${selected} -e ${shellQuote(sql)}`)
+  return mariadbExec(
+    config,
+    `client=$(command -v mariadb || command -v mysql) && "$client" --batch --skip-column-names -u ${user}${selected} -e ${shellQuote(sql)}`,
+  )
 }
 
 export function shellQuote(value) {

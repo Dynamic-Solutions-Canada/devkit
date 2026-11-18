@@ -49,7 +49,10 @@ export function sanitizeLabel(value) {
  * is replaced by a hash of the untruncated name, so distinct inputs stay distinct.
  */
 export function postgresIdentifier(prefix, name) {
-  const normalized = String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const normalized = String(name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
   const full = `${prefix}${normalized}`
   if (full.length <= POSTGRES_IDENTIFIER_LIMIT) return full
   const digest = createHash('sha256').update(full).digest('hex').slice(0, 8)
@@ -62,11 +65,15 @@ export function postgresIdentifier(prefix, name) {
  */
 export function readGitCheckout(root = process.cwd()) {
   try {
-    const output = execFileSync('git', ['rev-parse', '--git-dir', '--git-common-dir', '--show-toplevel'], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore']
-    })
+    const output = execFileSync(
+      'git',
+      ['rev-parse', '--git-dir', '--git-common-dir', '--show-toplevel'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    )
     const [gitDir, gitCommonDir, toplevel] = output.trim().split('\n')
     if (!gitDir || !gitCommonDir || !toplevel) return null
     return { gitDir, gitCommonDir, toplevel, root }
@@ -86,20 +93,38 @@ export function readGitCheckout(root = process.cwd()) {
  * The primary checkout keeps the bare database name (the repo name) so devkit adopts
  * the dev database you already have rather than starting you on an empty one.
  */
-export function deriveCheckoutIdentity(checkout, {
-  domain = 'localhost', secondaryDomains = [], preferredDomain = domain
-} = {}) {
+export function deriveCheckoutIdentity(
+  checkout,
+  {
+    domain = 'localhost',
+    secondaryDomains = [],
+    preferredDomain = domain,
+  } = {},
+) {
   domain = normalizeDomain(domain)
   preferredDomain = normalizeDomain(preferredDomain)
-  const domains = [...new Set([domain, ...secondaryDomains.map(normalizeDomain)])]
-  if (!domains.includes(preferredDomain)) throw new Error('preferredDomain must be a configured domain')
-  const commonDir = path.resolve(checkout.root ?? checkout.toplevel, checkout.gitCommonDir)
-  const gitDir = path.resolve(checkout.root ?? checkout.toplevel, checkout.gitDir)
+  const domains = [
+    ...new Set([domain, ...secondaryDomains.map(normalizeDomain)]),
+  ]
+  if (!domains.includes(preferredDomain))
+    throw new Error('preferredDomain must be a configured domain')
+  const commonDir = path.resolve(
+    checkout.root ?? checkout.toplevel,
+    checkout.gitCommonDir,
+  )
+  const gitDir = path.resolve(
+    checkout.root ?? checkout.toplevel,
+    checkout.gitDir,
+  )
   const isPrimary = gitDir === commonDir
-  const repoName = sanitizeLabel(path.basename(path.dirname(commonDir))) || 'repo'
-  const worktreeName = isPrimary ? null : sanitizeLabel(path.basename(gitDir)) || 'worktree'
+  const repoName =
+    sanitizeLabel(path.basename(path.dirname(commonDir))) || 'repo'
+  const worktreeName = isPrimary
+    ? null
+    : sanitizeLabel(path.basename(gitDir)) || 'worktree'
   const name = isPrimary ? repoName : `${worktreeName}.${repoName}`
-  const secondaryHostnames = domains.filter((suffix) => suffix !== preferredDomain)
+  const secondaryHostnames = domains
+    .filter((suffix) => suffix !== preferredDomain)
     .map((suffix) => `${name}.${suffix}`)
 
   return {
@@ -110,11 +135,13 @@ export function deriveCheckoutIdentity(checkout, {
     /** Browser origin host. Nested so a parent RP id can cover every worktree; see host-mode/README. */
     hostname: `${name}.${preferredDomain}`,
     ...(secondaryHostnames.length ? { secondaryHostnames } : {}),
-    databaseName: isPrimary ? postgresIdentifier('', repoName) : postgresIdentifier(`${repoName}_wt_`, worktreeName),
+    databaseName: isPrimary
+      ? postgresIdentifier('', repoName)
+      : postgresIdentifier(`${repoName}_wt_`, worktreeName),
     /** Namespaces containers/networks/volumes so one checkout's `compose down` cannot touch another. */
     composeProject: isPrimary ? repoName : `${repoName}-wt-${worktreeName}`,
     /** Stable per-checkout slug for filenames (Traefik route files, lock files). */
-    slug: isPrimary ? repoName : `${repoName}-${worktreeName}`
+    slug: isPrimary ? repoName : `${repoName}-${worktreeName}`,
   }
 }
 
@@ -126,7 +153,10 @@ export function checkoutIdentity(root = process.cwd(), options) {
 
 /** The baseline template every new checkout's database is cloned from. One per clone. */
 export function baselineDatabaseName(identity) {
-  return postgresIdentifier(`${identity.databaseBaseName ?? identity.repoName}_`, 'baseline')
+  return postgresIdentifier(
+    `${identity.databaseBaseName ?? identity.repoName}_`,
+    'baseline',
+  )
 }
 
 /** Block of 10 consecutive ports, so a checkout can grow a service without re-deriving. */
@@ -153,13 +183,19 @@ export function checkoutPorts(identity, portNames = ['web', 'api']) {
   const digest = createHash('sha256').update(identity.slug).digest()
   const base = Number.isInteger(override)
     ? override
-    : PORT_RANGE_START + (digest.readUInt32BE(0) % PORT_BLOCK_COUNT) * PORT_BLOCK_SIZE
+    : PORT_RANGE_START +
+      (digest.readUInt32BE(0) % PORT_BLOCK_COUNT) * PORT_BLOCK_SIZE
 
   if (portNames.length > PORT_BLOCK_SIZE) {
-    throw new Error(`devkit: ${portNames.length} ports requested but a block holds ${PORT_BLOCK_SIZE}`)
+    throw new Error(
+      `devkit: ${portNames.length} ports requested but a block holds ${PORT_BLOCK_SIZE}`,
+    )
   }
   // Offsets follow the ORDER given, so a project must not reorder its port list casually: every
   // name would move to a different port, which is harmless for the proxied origin and annoying for
   // anything a person has bookmarked on a direct port.
-  return portNames.reduce((ports, name, index) => ({ ...ports, [name]: base + index }), { base })
+  return portNames.reduce(
+    (ports, name, index) => ({ ...ports, [name]: base + index }),
+    { base },
+  )
 }

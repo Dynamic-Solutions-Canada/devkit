@@ -1,14 +1,25 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 
 import { checkoutIdentity } from '../src/checkout-identity.mjs'
-import { acquireCheckoutRunner, runnerFilePath, stopCheckoutRunner } from '../src/checkout-runner.mjs'
-
+import {
+  acquireCheckoutRunner,
+  runnerFilePath,
+  stopCheckoutRunner,
+} from '../src/checkout-runner.mjs'
 
 /** Creates a disposable host runner with simulated Docker, never using the machine's stack. */
 function fixture(t) {
@@ -20,7 +31,11 @@ function fixture(t) {
     if (existsSync(directory)) {
       for (const file of readdirSync(directory)) {
         const record = path.join(directory, file)
-        try { process.kill(JSON.parse(readFileSync(record)).pid, 'SIGTERM') } catch { /* the runner already exited */ }
+        try {
+          process.kill(JSON.parse(readFileSync(record)).pid, 'SIGTERM')
+        } catch {
+          /* the runner already exited */
+        }
         const deadline = Date.now() + 3000
         while (existsSync(record) && Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 25))
@@ -36,8 +51,12 @@ function fixture(t) {
 async function runNode(file, args, options) {
   const child = spawn(process.execPath, [file, ...args], options)
   let output = ''
-  child.stdout.on('data', (data) => { output += data })
-  child.stderr.on('data', (data) => { output += data })
+  child.stdout.on('data', (data) => {
+    output += data
+  })
+  child.stderr.on('data', (data) => {
+    output += data
+  })
   const [code] = await once(child, 'close')
   return { code, output }
 }
@@ -47,7 +66,10 @@ test('same-checkout leases reject duplicates, other worktrees remain independent
   const first = acquireCheckoutRunner(config, { slug: 'repo-one' })
   const second = acquireCheckoutRunner(config, { slug: 'repo-two' })
   try {
-    assert.throws(() => acquireCheckoutRunner(config, { slug: 'repo-one' }), /already running/)
+    assert.throws(
+      () => acquireCheckoutRunner(config, { slug: 'repo-one' }),
+      /already running/,
+    )
     first.release()
     const replacement = acquireCheckoutRunner(config, { slug: 'repo-one' })
     first.release()
@@ -63,28 +85,41 @@ test('leases from dead owners are recovered', (t) => {
   const { config } = fixture(t)
   const identity = { slug: 'repo-one' }
   mkdirSync(path.join(config.configDir, 'runners'))
-  writeFileSync(runnerFilePath(config, identity), JSON.stringify({ pid: 0, token: 'dead' }))
+  writeFileSync(
+    runnerFilePath(config, identity),
+    JSON.stringify({ pid: 0, token: 'dead' }),
+  )
   const runner = acquireCheckoutRunner(config, identity)
-  assert.equal(JSON.parse(readFileSync(runnerFilePath(config, identity))).pid, process.pid)
+  assert.equal(
+    JSON.parse(readFileSync(runnerFilePath(config, identity))).pid,
+    process.pid,
+  )
   runner.release()
 })
 
 test('concurrent processes admit exactly one runner', async (t) => {
   const { root, config } = fixture(t)
   const script = path.join(root, 'contender.mjs')
-  writeFileSync(script, `
+  writeFileSync(
+    script,
+    `
     import { acquireCheckoutRunner } from ${JSON.stringify(new URL('../src/checkout-runner.mjs', import.meta.url).href)}
     try {
       acquireCheckoutRunner({ configDir: process.argv[2] }, { slug: 'same' })
       process.send('acquired')
       process.on('message', () => process.exit(0))
     } catch { process.send('rejected'); process.exit(1) }
-  `)
-  const children = Array.from({ length: 8 }, () => spawn(process.execPath, [script, config.configDir], {
-    stdio: ['ignore', 'ignore', 'pipe', 'ipc']
-  }))
+  `,
+  )
+  const children = Array.from({ length: 8 }, () =>
+    spawn(process.execPath, [script, config.configDir], {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    }),
+  )
   t.after(() => children.forEach((child) => child.kill()))
-  const messages = await Promise.all(children.map(async (child) => (await once(child, 'message'))[0]))
+  const messages = await Promise.all(
+    children.map(async (child) => (await once(child, 'message'))[0]),
+  )
   assert.equal(messages.filter((message) => message === 'acquired').length, 1)
   const winner = children[messages.indexOf('acquired')]
   const exited = once(winner, 'exit')
@@ -101,9 +136,14 @@ test('background runner survives parent exit, rejects duplicates without Docker 
   mkdirSync(path.join(config.configDir, 'infra'))
   execFileSync('git', ['init', '-q', repo])
   writeFileSync(path.join(config.configDir, 'host.json'), '{"enabled":true}')
-  writeFileSync(path.join(repo, 'devkit.config.mjs'), 'export default { migrationsTable: null }')
+  writeFileSync(
+    path.join(repo, 'devkit.config.mjs'),
+    'export default { migrationsTable: null }',
+  )
   const trace = path.join(root, 'docker-calls')
-  writeFileSync(path.join(bin, 'docker'), `#!/usr/bin/env node
+  writeFileSync(
+    path.join(bin, 'docker'),
+    `#!/usr/bin/env node
     const { appendFileSync } = require('node:fs')
     const args = process.argv.slice(2)
     appendFileSync(process.env.TEST_DOCKER_TRACE, JSON.stringify(args) + '\\n')
@@ -114,9 +154,13 @@ test('background runner survives parent exit, rejects duplicates without Docker 
       setInterval(() => {}, 1000)
       process.on('SIGTERM', () => process.exit(0))
     }
-  `, { mode: 0o755 })
+  `,
+    { mode: 0o755 },
+  )
   const script = path.join(repo, 'dev.mjs')
-  writeFileSync(script, `
+  writeFileSync(
+    script,
+    `
     import { preflight, checkoutCompose, checkoutComposeLifecycle } from ${JSON.stringify(new URL('../src/index.mjs', import.meta.url).href)}
     const teardown = process.argv.includes('--down')
     const state = await preflight({ repoRoot: process.cwd() })
@@ -124,14 +168,28 @@ test('background runner survives parent exit, rejects duplicates without Docker 
     const invocation = checkoutCompose(state, { projectDirectory: process.cwd() })
     const lifecycle = checkoutComposeLifecycle(state, invocation)
     process.exit(teardown ? lifecycle.stop() : await lifecycle.run(['up', '--remove-orphans']))
-  `)
+  `,
+  )
   const options = {
     cwd: repo,
-    env: { ...process.env, DEVKIT: '1', DEVKIT_CONFIG_DIR: config.configDir, PATH: `${bin}:${process.env.PATH}`, TEST_DOCKER_TRACE: trace }
+    env: {
+      ...process.env,
+      DEVKIT: '1',
+      DEVKIT_CONFIG_DIR: config.configDir,
+      PATH: `${bin}:${process.env.PATH}`,
+      TEST_DOCKER_TRACE: trace,
+    },
   }
   const identity = checkoutIdentity(repo)
   t.after(() => {
-    try { process.kill(JSON.parse(readFileSync(runnerFilePath(config, identity))).pid, 'SIGTERM') } catch { /* the runner already exited */ }
+    try {
+      process.kill(
+        JSON.parse(readFileSync(runnerFilePath(config, identity))).pid,
+        'SIGTERM',
+      )
+    } catch {
+      /* the runner already exited */
+    }
   })
   const start = await runNode(script, ['--background'], options)
   assert.equal(start.code, 0, start.output)
@@ -139,7 +197,13 @@ test('background runner survives parent exit, rejects duplicates without Docker 
   const runner = JSON.parse(readFileSync(runnerFilePath(config, identity)))
   assert.doesNotThrow(() => process.kill(runner.pid, 0))
   const deadline = Date.now() + 5000
-  while (!readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse).some((args) => args.includes('up') && !args.includes('-d'))) {
+  while (
+    !readFileSync(trace, 'utf8')
+      .trim()
+      .split('\n')
+      .map(JSON.parse)
+      .some((args) => args.includes('up') && !args.includes('-d'))
+  ) {
     assert.ok(Date.now() < deadline, 'fixture Compose runner did not start')
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
@@ -155,27 +219,46 @@ test('background runner survives parent exit, rejects duplicates without Docker 
   const down = await runNode(script, ['--down'], options)
   assert.equal(down.code, 0, down.output)
   assert.equal(existsSync(runnerFilePath(config, identity)), false)
-  assert.equal(existsSync(path.join(config.configDir, 'routes', `${identity.slug}.yml`)), false)
-  assert.match(readFileSync(path.join(config.configDir, 'logs', `${identity.slug}.log`), 'utf8'), /already running/)
+  assert.equal(
+    existsSync(path.join(config.configDir, 'routes', `${identity.slug}.yml`)),
+    false,
+  )
+  assert.match(
+    readFileSync(
+      path.join(config.configDir, 'logs', `${identity.slug}.log`),
+      'utf8',
+    ),
+    /already running/,
+  )
   // A child setup failure must return failure to the parent and leave the checkout restartable.
-  writeFileSync(path.join(repo, 'devkit.config.mjs'), 'export default { ports: null }')
+  writeFileSync(
+    path.join(repo, 'devkit.config.mjs'),
+    'export default { ports: null }',
+  )
   const failedStart = await runNode(script, ['--background'], options)
   assert.equal(failedStart.code, 1)
   assert.equal(existsSync(runnerFilePath(config, identity)), false)
-  writeFileSync(path.join(repo, 'devkit.config.mjs'), 'export default { migrationsTable: null }')
+  writeFileSync(
+    path.join(repo, 'devkit.config.mjs'),
+    'export default { migrationsTable: null }',
+  )
   const restart = await runNode(script, ['--background'], options)
   assert.equal(restart.code, 0, restart.output)
   assert.equal((await runNode(script, ['--down'], options)).code, 0)
 })
 
-
 test('PID reuse neither blocks a replacement nor signals the unrelated process', async (t) => {
   const { config } = fixture(t)
   const identity = { slug: 'reused-pid' }
   mkdirSync(path.join(config.configDir, 'runners'))
-  writeFileSync(runnerFilePath(config, identity), JSON.stringify({
-    pid: process.pid, birth: 'different-process', token: 'old'
-  }))
+  writeFileSync(
+    runnerFilePath(config, identity),
+    JSON.stringify({
+      pid: process.pid,
+      birth: 'different-process',
+      token: 'old',
+    }),
+  )
   await stopCheckoutRunner(config, identity)
   const replacement = acquireCheckoutRunner(config, identity)
   assert.notEqual(replacement.birth, 'different-process')

@@ -33,7 +33,7 @@ export default {
     version: '16-bookworm',
     name: 'my_app',
     // Opt in only when host-side tools need the checkout database.
-    hostAccess: true
+    hostAccess: true,
   },
   migrationsTable: '_prisma_migrations',
   baselinePaths: ['data/uploads'],
@@ -41,15 +41,15 @@ export default {
   install: {
     command: ['npm', 'ci'],
     inputs: ['package.json', 'package-lock.json', '.nvmrc'],
-    output: 'node_modules'
+    output: 'node_modules',
   },
   dependencies: [{ name: 'public-api', healthPath: '/api/_health' }],
   browser: { path: '/', healthPath: '/_health' },
   env: ({ database, url }) => ({
     CLIENT_ORIGIN: url,
     DATABASE_URL: database.url,
-    VITE_DEV_PORT: '5173'
-  })
+    VITE_DEV_PORT: '5173',
+  }),
 }
 ```
 
@@ -64,7 +64,7 @@ import path from 'node:path'
 import {
   checkoutCompose,
   checkoutComposeLifecycle,
-  preflight
+  preflight,
 } from '@ryanewen/devkit'
 
 const teardown = process.argv.includes('--down')
@@ -75,8 +75,8 @@ const invocation = checkoutCompose(state, {
   env: {
     DEVKIT_WEB_PORT: String(state.ports.web),
     HOST_UID: String(process.getuid?.() ?? 1000),
-    HOST_GID: String(process.getgid?.() ?? 1000)
-  }
+    HOST_GID: String(process.getgid?.() ?? 1000),
+  },
 })
 const lifecycle = checkoutComposeLifecycle(state, invocation)
 
@@ -121,22 +121,22 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `devkit bootstrap` | configure the machine proxy and database definitions; routing options are under [Remote development](#remote-development-and-an-existing-nginx-server) |
-| `devkit prepare` | copy this checkout's `worktreeFiles` and install its dependencies, without starting anything |
-| `devkit run <command> [arguments...]` | run host tooling with the checkout's pinned Node/npm |
-| `devkit doctor` | inspect this checkout's URLs, proxy, container, database, baseline, and dependencies |
-| `devkit snapshot` | capture this checkout as the baseline for new worktrees |
-| `devkit reset` | rebuild a worktree database from its baseline (`--empty` skips it) |
-| `devkit prune` | find orphaned checkout database volumes (`--yes` removes them) |
-| `devkit cleanup` | preview private linked-worktree resources; `--yes` permanently removes them |
-| `devkit infra` | start the proxy and current checkout database |
-| `devkit use [<dependency> <worktree> \| <dependency> --primary]` | show or choose which checkout of each dependency this checkout uses |
-| `devkit nginx` | print nginx configuration for the configured machine domains |
-| `devproxy add <name> <port>` | route any host process through `<name>.localhost` |
-| `devproxy rm <name>` | remove a route added with `devproxy add` |
-| `devproxy ls` | list every route and whether it is answering |
+| Command                                                          | Purpose                                                                                                                                                |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `devkit bootstrap`                                               | configure the machine proxy and database definitions; routing options are under [Remote development](#remote-development-and-an-existing-nginx-server) |
+| `devkit prepare`                                                 | copy this checkout's `worktreeFiles` and install its dependencies, without starting anything                                                           |
+| `devkit run <command> [arguments...]`                            | run host tooling with the checkout's pinned Node/npm                                                                                                   |
+| `devkit doctor`                                                  | inspect this checkout's URLs, proxy, container, database, baseline, and dependencies                                                                   |
+| `devkit snapshot`                                                | capture this checkout as the baseline for new worktrees                                                                                                |
+| `devkit reset`                                                   | rebuild a worktree database from its baseline (`--empty` skips it)                                                                                     |
+| `devkit prune`                                                   | find orphaned checkout database volumes (`--yes` removes them)                                                                                         |
+| `devkit cleanup`                                                 | preview private linked-worktree resources; `--yes` permanently removes them                                                                            |
+| `devkit infra`                                                   | start the proxy and current checkout database                                                                                                          |
+| `devkit use [<dependency> <worktree> \| <dependency> --primary]` | show or choose which checkout of each dependency this checkout uses                                                                                    |
+| `devkit nginx`                                                   | print nginx configuration for the configured machine domains                                                                                           |
+| `devproxy add <name> <port>`                                     | route any host process through `<name>.localhost`                                                                                                      |
+| `devproxy rm <name>`                                             | remove a route added with `devproxy add`                                                                                                               |
+| `devproxy ls`                                                    | list every route and whether it is answering                                                                                                           |
 
 `devkit` with no command prints the full option list.
 
@@ -173,7 +173,9 @@ Keep ordinary `dev:down` non-destructive: it stops development and keeps the dat
 Declare additional **private** volumes in `devkit.config.mjs`, for example:
 
 ```js
-cleanup: { volumes: ['{project}_slicer-data', '{project}_slicer-work'] }
+cleanup: {
+  volumes: ['{project}_slicer-data', '{project}_slicer-work']
+}
 ```
 
 Names must start with `{project}-` or `{project}_`; cleanup also verifies each existing volume's Compose project label. Shared engine caches, CLI credentials, and other repositories' volumes must never appear here. Docker refuses removal of any volume still mounted by a container.

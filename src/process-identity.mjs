@@ -12,18 +12,32 @@ export function processBirth(pid) {
   try {
     if (process.platform === 'linux') {
       const startTicks = linuxProcessFields(pid)[19]
-      const boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim()
+      const boot = readFileSync(
+        '/proc/sys/kernel/random/boot_id',
+        'utf8',
+      ).trim()
       return `${boot}:${startTicks}`
     }
     if (process.platform === 'win32') {
-      return execFileSync('powershell.exe', [
-        '-NoProfile', '-NonInteractive', '-Command',
-        `(Get-Process -Id ${Number(pid)}).StartTime.ToUniversalTime().Ticks`
-      ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null
+      return (
+        execFileSync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `(Get-Process -Id ${Number(pid)}).StartTime.ToUniversalTime().Ticks`,
+          ],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        ).trim() || null
+      )
     }
-    return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']
-    }).trim() || null
+    return (
+      execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null
+    )
   } catch {
     return null
   }

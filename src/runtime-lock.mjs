@@ -1,4 +1,12 @@
-import { mkdirSync, readlinkSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
+import {
+  mkdirSync,
+  readlinkSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
@@ -17,14 +25,20 @@ const LOCK_RETRY_MS = 25
  * operations must be synchronous and must not recursively acquire the same lock.
  */
 export function withRuntimeLock(config, name, operation) {
-  return withTicketLock(config, name, () => withLegacyLock(config, name, operation))
+  return withTicketLock(config, name, () =>
+    withLegacyLock(config, name, operation),
+  )
 }
 
 /** Keeps compatibility with older Devkit processes that still use the shared symlink lock. */
 function withLegacyLock(config, name, operation) {
   mkdirSync(config.configDir, { recursive: true })
   const lockPath = path.join(config.configDir, `${name}.lock`)
-  const owner = JSON.stringify({ pid: process.pid, birth: processBirth(process.pid), token: randomUUID() })
+  const owner = JSON.stringify({
+    pid: process.pid,
+    birth: processBirth(process.pid),
+    token: randomUUID(),
+  })
 
   for (let attempt = 0; attempt < LOCK_RETRIES; attempt += 1) {
     try {
@@ -51,7 +65,12 @@ function withLegacyLock(config, name, operation) {
         }
         continue
       }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_MS)
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        LOCK_RETRY_MS,
+      )
       continue
     }
 
@@ -71,11 +90,12 @@ function withLegacyLock(config, name, operation) {
   throw new Error(`devkit: timed out waiting for the ${name} lifecycle lock`)
 }
 
-
 /** Reads independent contenders, removing only dead owners' unique paths, never a shared lock. */
 function contenders(directory) {
   const active = []
-  for (const filename of readdirSync(directory).filter((file) => file.endsWith('.ticket'))) {
+  for (const filename of readdirSync(directory).filter((file) =>
+    file.endsWith('.ticket'),
+  )) {
     const file = path.join(directory, filename)
     try {
       const owner = JSON.parse(readlinkSync(file))
@@ -96,12 +116,21 @@ function contenders(directory) {
 function withTicketLock(config, name, operation) {
   const directory = path.join(config.configDir, `${name}.tickets`)
   mkdirSync(directory, { recursive: true })
-  const owner = { pid: process.pid, birth: processBirth(process.pid), token: randomUUID(), ticket: null }
+  const owner = {
+    pid: process.pid,
+    birth: processBirth(process.pid),
+    token: randomUUID(),
+    ticket: null,
+  }
   const file = path.join(directory, `${owner.token}.ticket`)
   const temporary = `${file}.tmp`
   symlinkSync(JSON.stringify(owner), file)
   try {
-    owner.ticket = Math.max(0, ...contenders(directory).map((candidate) => candidate.ticket ?? 0)) + 1
+    owner.ticket =
+      Math.max(
+        0,
+        ...contenders(directory).map((candidate) => candidate.ticket ?? 0),
+      ) + 1
     symlinkSync(JSON.stringify(owner), temporary)
     renameSync(temporary, file)
 
@@ -109,11 +138,18 @@ function withTicketLock(config, name, operation) {
       const blocked = contenders(directory).some((candidate) => {
         if (candidate.token === owner.token) return false
         if (candidate.ticket === null) return true
-        return candidate.ticket < owner.ticket ||
+        return (
+          candidate.ticket < owner.ticket ||
           (candidate.ticket === owner.ticket && candidate.token < owner.token)
+        )
       })
       if (!blocked) return operation()
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_MS)
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        LOCK_RETRY_MS,
+      )
     }
     throw new Error(`devkit: timed out waiting for the ${name} admission lock`)
   } finally {

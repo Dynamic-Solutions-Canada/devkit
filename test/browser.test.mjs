@@ -12,38 +12,61 @@ import {
   openBrowser,
   scheduleBrowserOpen,
   vsCodeBrowserHelper,
-  vsCodeBrowserUri
+  vsCodeBrowserUri,
 } from '../src/browser.mjs'
 
 test('browser URLs preserve the proxy port and allow a separate health path', () => {
   assert.deepEqual(
     checkoutBrowserUrls('http://public-api.localhost:8080', {
       path: '/api/',
-      healthPath: '/api/_health'
+      healthPath: '/api/_health',
     }),
     {
       openUrl: 'http://public-api.localhost:8080/api/',
-      healthUrl: 'http://public-api.localhost:8080/api/_health'
-    }
+      healthUrl: 'http://public-api.localhost:8080/api/_health',
+    },
   )
 })
 
 test('browser commands use the native host opener', () => {
-  assert.deepEqual(browserCommand('http://app.localhost', { platform: 'darwin', env: {} }), {
-    command: 'open', args: ['http://app.localhost']
-  })
-  assert.deepEqual(browserCommand('http://app.localhost', { platform: 'linux', env: { WSL_DISTRO_NAME: 'Ubuntu' } }), {
-    command: 'cmd.exe', args: ['/c', 'start', '', 'http://app.localhost']
-  })
-  assert.deepEqual(browserCommand('http://app.localhost', { platform: 'linux', env: {} }), {
-    command: 'xdg-open', args: ['http://app.localhost']
-  })
+  assert.deepEqual(
+    browserCommand('http://app.localhost', { platform: 'darwin', env: {} }),
+    {
+      command: 'open',
+      args: ['http://app.localhost'],
+    },
+  )
+  assert.deepEqual(
+    browserCommand('http://app.localhost', {
+      platform: 'linux',
+      env: { WSL_DISTRO_NAME: 'Ubuntu' },
+    }),
+    {
+      command: 'cmd.exe',
+      args: ['/c', 'start', '', 'http://app.localhost'],
+    },
+  )
+  assert.deepEqual(
+    browserCommand('http://app.localhost', { platform: 'linux', env: {} }),
+    {
+      command: 'xdg-open',
+      args: ['http://app.localhost'],
+    },
+  )
 })
 
 test('VS Code terminals are detected from local and remote environment markers', () => {
   assert.equal(isVsCodeTerminal({ TERM_PROGRAM: 'vscode' }), true)
-  assert.equal(isVsCodeTerminal({ VSCODE_IPC_HOOK_CLI: '/tmp/vscode-ipc.sock' }), true)
-  assert.equal(isVsCodeTerminal({ VSCODE_NLS_CONFIG: '{"defaultMessagesFile":"/tmp/messages.json"}' }), true)
+  assert.equal(
+    isVsCodeTerminal({ VSCODE_IPC_HOOK_CLI: '/tmp/vscode-ipc.sock' }),
+    true,
+  )
+  assert.equal(
+    isVsCodeTerminal({
+      VSCODE_NLS_CONFIG: '{"defaultMessagesFile":"/tmp/messages.json"}',
+    }),
+    true,
+  )
   assert.equal(isVsCodeTerminal({ TERM_PROGRAM: 'other' }), false)
 })
 
@@ -51,42 +74,47 @@ test('VS Code Server browser helper is resolved from terminal environment', () =
   const env = {
     VSCODE_IPC_HOOK_CLI: '/run/user/1000/vscode-ipc.sock',
     VSCODE_NLS_CONFIG: JSON.stringify({
-      defaultMessagesFile: '/home/me/.vscode-server/bin/commit/out/nls.messages.json'
-    })
+      defaultMessagesFile:
+        '/home/me/.vscode-server/bin/commit/out/nls.messages.json',
+    }),
   }
   assert.equal(
     vsCodeBrowserHelper(env, { existsSyncImpl: () => true }),
-    '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh'
+    '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh',
   )
-  assert.deepEqual(browserCommand('http://app.localhost/', {
-    env: { ...env, WSL_DISTRO_NAME: 'Ubuntu' },
-    existsSyncImpl: () => true
-  }), {
-    command: '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh',
-    args: ['http://app.localhost/']
-  })
+  assert.deepEqual(
+    browserCommand('http://app.localhost/', {
+      env: { ...env, WSL_DISTRO_NAME: 'Ubuntu' },
+      existsSyncImpl: () => true,
+    }),
+    {
+      command: '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh',
+      args: ['http://app.localhost/'],
+    },
+  )
 })
 
 test('VS Code Server browser helper survives agent processes without the IPC hook', () => {
   const env = {
     VSCODE_NLS_CONFIG: JSON.stringify({
-      defaultMessagesFile: '/home/me/.vscode-server/bin/commit/out/nls.messages.json'
-    })
+      defaultMessagesFile:
+        '/home/me/.vscode-server/bin/commit/out/nls.messages.json',
+    }),
   }
   assert.equal(
     vsCodeBrowserHelper(env, { existsSyncImpl: () => true }),
-    '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh'
+    '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh',
   )
 })
 
 test('VS Code Server browser helper uses the askpass runtime available in integrated terminals', () => {
   const env = {
     VSCODE_IPC_HOOK_CLI: '/run/user/1000/vscode-ipc.sock',
-    VSCODE_GIT_ASKPASS_NODE: '/home/me/.vscode-server/bin/commit/node'
+    VSCODE_GIT_ASKPASS_NODE: '/home/me/.vscode-server/bin/commit/node',
   }
   assert.equal(
     vsCodeBrowserHelper(env, { existsSyncImpl: () => true }),
-    '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh'
+    '/home/me/.vscode-server/bin/commit/bin/helpers/browser.sh',
   )
 })
 
@@ -94,31 +122,37 @@ test('VS Code browser URI safely carries the complete project URL', () => {
   assert.equal(
     vsCodeBrowserUri(
       'http://public-api.localhost/api/?one=two',
-      'vscode://ryanewen.devkit-browser/open?windowId=14'
+      'vscode://ryanewen.devkit-browser/open?windowId=14',
     ),
-    'vscode://ryanewen.devkit-browser/open?windowId=14&url=http%3A%2F%2Fpublic-api.localhost%2Fapi%2F%3Fone%3Dtwo'
+    'vscode://ryanewen.devkit-browser/open?windowId=14&url=http%3A%2F%2Fpublic-api.localhost%2Fapi%2F%3Fone%3Dtwo',
   )
 })
 
 test('installed VS Code browser bridge is reused', () => {
   const calls = []
-  assert.equal(ensureVsCodeBrowserBridge({
-    spawnSyncImpl: (command, args) => {
-      calls.push([command, args])
-      return { status: 0, stdout: 'ryanewen.devkit-browser@0.3.0\n' }
-    }
-  }), true)
+  assert.equal(
+    ensureVsCodeBrowserBridge({
+      spawnSyncImpl: (command, args) => {
+        calls.push([command, args])
+        return { status: 0, stdout: 'ryanewen.devkit-browser@0.3.0\n' }
+      },
+    }),
+    true,
+  )
   assert.equal(calls.length, 1)
 })
 
 test('missing VS Code browser bridge is installed from the bundled VSIX', () => {
   const calls = []
-  assert.equal(ensureVsCodeBrowserBridge({
-    spawnSyncImpl: (command, args) => {
-      calls.push([command, args])
-      return { status: 0, stdout: '' }
-    }
-  }), true)
+  assert.equal(
+    ensureVsCodeBrowserBridge({
+      spawnSyncImpl: (command, args) => {
+        calls.push([command, args])
+        return { status: 0, stdout: '' }
+      },
+    }),
+    true,
+  )
   assert.equal(calls.length, 2)
   assert.equal(calls[1][1][0], '--install-extension')
   assert.match(calls[1][1][1], /devkit-browser-0\.3\.0\.vsix$/)
@@ -128,145 +162,221 @@ test('integrated browser command sends the URL through VS Code Server', () => {
   const env = {
     VSCODE_IPC_HOOK_CLI: '/run/user/1000/vscode-ipc.sock',
     BROWSER: '/opt/vscode/browser.sh',
-    DEVKIT_VSCODE_BROWSER_URI: 'vscode://ryanewen.devkit-browser/open?windowId=14'
+    DEVKIT_VSCODE_BROWSER_URI:
+      'vscode://ryanewen.devkit-browser/open?windowId=14',
   }
-  assert.deepEqual(integratedBrowserCommand('http://app.localhost/', {
-    env,
-    existsSyncImpl: () => true,
-    spawnSyncImpl: () => ({ status: 0, stdout: 'ryanewen.devkit-browser@0.3.0\n' })
-  }), {
-    command: '/opt/vscode/browser.sh',
-    args: ['vscode://ryanewen.devkit-browser/open?windowId=14&url=http%3A%2F%2Fapp.localhost%2F']
-  })
+  assert.deepEqual(
+    integratedBrowserCommand('http://app.localhost/', {
+      env,
+      existsSyncImpl: () => true,
+      spawnSyncImpl: () => ({
+        status: 0,
+        stdout: 'ryanewen.devkit-browser@0.3.0\n',
+      }),
+    }),
+    {
+      command: '/opt/vscode/browser.sh',
+      args: [
+        'vscode://ryanewen.devkit-browser/open?windowId=14&url=http%3A%2F%2Fapp.localhost%2F',
+      ],
+    },
+  )
 })
 
 test('integrated browser requires a callback scoped to the originating VS Code window', () => {
   let bridgeChecked = false
-  assert.equal(integratedBrowserCommand('http://app.localhost/', {
-    env: {
-      VSCODE_IPC_HOOK_CLI: '/run/user/1000/vscode-ipc.sock',
-      BROWSER: '/opt/vscode/browser.sh'
-    },
-    existsSyncImpl: () => true,
-    spawnSyncImpl: () => {
-      bridgeChecked = true
-      return { status: 0, stdout: 'ryanewen.devkit-browser@0.3.0\n' }
-    }
-  }), null)
+  assert.equal(
+    integratedBrowserCommand('http://app.localhost/', {
+      env: {
+        VSCODE_IPC_HOOK_CLI: '/run/user/1000/vscode-ipc.sock',
+        BROWSER: '/opt/vscode/browser.sh',
+      },
+      existsSyncImpl: () => true,
+      spawnSyncImpl: () => {
+        bridgeChecked = true
+        return { status: 0, stdout: 'ryanewen.devkit-browser@0.3.0\n' }
+      },
+    }),
+    null,
+  )
   assert.equal(bridgeChecked, true)
 })
 
 test('failed bridge setup falls back to the native browser', () => {
   let opened
-  assert.equal(openBrowser('http://app.localhost/', {
-    env: { TERM_PROGRAM: 'vscode', WSL_DISTRO_NAME: 'Ubuntu' },
-    existsSyncImpl: () => false,
-    log: () => {},
-    spawnImpl: (command, args) => {
-      opened = [command, args]
-      return { unref: () => {} }
-    }
-  }), 'native')
-  assert.deepEqual(opened, ['cmd.exe', ['/c', 'start', '', 'http://app.localhost/']])
+  assert.equal(
+    openBrowser('http://app.localhost/', {
+      env: { TERM_PROGRAM: 'vscode', WSL_DISTRO_NAME: 'Ubuntu' },
+      existsSyncImpl: () => false,
+      log: () => {},
+      spawnImpl: (command, args) => {
+        opened = [command, args]
+        return { unref: () => {} }
+      },
+    }),
+    'native',
+  )
+  assert.deepEqual(opened, [
+    'cmd.exe',
+    ['/c', 'start', '', 'http://app.localhost/'],
+  ])
 })
 
 test('no opening request suppresses the detached opener', () => {
   let spawned = false
-  assert.equal(scheduleBrowserOpen('http://app.localhost/', 'http://app.localhost/', {
-    env: { DEVKIT_OPEN_BROWSER: '0' },
-    spawnImpl: () => { spawned = true }
-  }), false)
+  assert.equal(
+    scheduleBrowserOpen('http://app.localhost/', 'http://app.localhost/', {
+      env: { DEVKIT_OPEN_BROWSER: '0' },
+      spawnImpl: () => {
+        spawned = true
+      },
+    }),
+    false,
+  )
   assert.equal(spawned, false)
 })
 
 test('VS Code browser waiter inherits output so its ready URL is clickable', () => {
   let options
   let unreferenced = false
-  assert.equal(scheduleBrowserOpen('http://app.localhost/', 'http://app.localhost/', {
-    target: 'auto',
-    env: { TERM_PROGRAM: 'vscode' },
-    spawnImpl: (_command, _args, spawnOptions) => {
-      options = spawnOptions
-      return { unref: () => { unreferenced = true } }
-    }
-  }), true)
+  assert.equal(
+    scheduleBrowserOpen('http://app.localhost/', 'http://app.localhost/', {
+      target: 'auto',
+      env: { TERM_PROGRAM: 'vscode' },
+      spawnImpl: (_command, _args, spawnOptions) => {
+        options = spawnOptions
+        return {
+          unref: () => {
+            unreferenced = true
+          },
+        }
+      },
+    }),
+    true,
+  )
   assert.deepEqual(options.stdio, ['ignore', 'inherit', 'inherit'])
   assert.equal(unreferenced, true)
 })
-
 
 test('browser opening is opt-in with CLI precedence over environment defaults', () => {
   assert.equal(browserOpenTarget([], {}), false)
   assert.equal(browserOpenTarget([], { DEVKIT_OPEN_BROWSER: '0' }), false)
   assert.equal(browserOpenTarget(['--open'], {}), 'auto')
-  assert.equal(browserOpenTarget(['--open=native'], { DEVKIT_OPEN_BROWSER: 'vscode' }), 'native')
-  assert.equal(browserOpenTarget(['--open'], { DEVKIT_OPEN_BROWSER: '0' }), 'auto')
+  assert.equal(
+    browserOpenTarget(['--open=native'], { DEVKIT_OPEN_BROWSER: 'vscode' }),
+    'native',
+  )
+  assert.equal(
+    browserOpenTarget(['--open'], { DEVKIT_OPEN_BROWSER: '0' }),
+    'auto',
+  )
   assert.equal(browserOpenTarget([], { DEVKIT_OPEN_BROWSER: '1' }), 'auto')
-  assert.equal(browserOpenTarget([], { DEVKIT_OPEN_BROWSER: 'vscode' }), 'vscode')
-  assert.throws(() => browserOpenTarget(['--open=unknown'], {}), /Browser target/)
+  assert.equal(
+    browserOpenTarget([], { DEVKIT_OPEN_BROWSER: 'vscode' }),
+    'vscode',
+  )
+  assert.throws(
+    () => browserOpenTarget(['--open=unknown'], {}),
+    /Browser target/,
+  )
   assert.throws(() => browserOpenTarget(['--open='], {}), /Browser target/)
 })
 
 test('selected browser target reaches the detached health waiter', () => {
   let argumentsPassed
-  assert.equal(scheduleBrowserOpen('http://app.localhost/', 'http://app.localhost/health', {
-    target: 'native',
-    env: {},
-    spawnImpl: (_command, args) => {
-      argumentsPassed = args
-      return { unref() {} }
-    }
-  }), true)
+  assert.equal(
+    scheduleBrowserOpen(
+      'http://app.localhost/',
+      'http://app.localhost/health',
+      {
+        target: 'native',
+        env: {},
+        spawnImpl: (_command, args) => {
+          argumentsPassed = args
+          return { unref() {} }
+        },
+      },
+    ),
+    true,
+  )
   assert.deepEqual(argumentsPassed.slice(1), [
-    '--wait', 'http://app.localhost/', 'http://app.localhost/health', 'native'
+    '--wait',
+    'http://app.localhost/',
+    'http://app.localhost/health',
+    'native',
   ])
 })
 
 test('remote readiness headers reach the detached waiter while the browser receives its public URL', () => {
   let argumentsPassed
   const headers = { Host: 'app.server.home', 'X-Forwarded-Proto': 'http' }
-  scheduleBrowserOpen('http://app.server.home/', 'http://172.24.0.1:18080/health', {
-    target: 'native', headers,
-    spawnImpl: (_command, args) => { argumentsPassed = args; return { unref() {} } }
-  })
+  scheduleBrowserOpen(
+    'http://app.server.home/',
+    'http://172.24.0.1:18080/health',
+    {
+      target: 'native',
+      headers,
+      spawnImpl: (_command, args) => {
+        argumentsPassed = args
+        return { unref() {} }
+      },
+    },
+  )
   assert.deepEqual(argumentsPassed.slice(1, 5), [
-    '--wait', 'http://app.server.home/', 'http://172.24.0.1:18080/health', 'native'
+    '--wait',
+    'http://app.server.home/',
+    'http://172.24.0.1:18080/health',
+    'native',
   ])
   assert.deepEqual(JSON.parse(argumentsPassed[5]), headers)
 })
 
 test('plain SSH sessions print the URL on the client instead of launching a server browser', () => {
   const logs = []
-  assert.equal(openBrowser('http://app.server.home/', {
-    platform: 'linux', env: { SSH_CONNECTION: 'client server' },
-    log: (message) => logs.push(message),
-    spawnImpl: () => assert.fail('no server-side browser should start')
-  }), 'printed')
+  assert.equal(
+    openBrowser('http://app.server.home/', {
+      platform: 'linux',
+      env: { SSH_CONNECTION: 'client server' },
+      log: (message) => logs.push(message),
+      spawnImpl: () => assert.fail('no server-side browser should start'),
+    }),
+    'printed',
+  )
   assert.match(logs[0], /http:\/\/app\.server\.home\//)
 })
 
 test('an explicit VS Code request fails without opening a different browser', () => {
   let spawned = false
-  assert.throws(() => openBrowser('http://app.localhost/', {
-    target: 'vscode',
-    env: {},
-    spawnImpl: () => { spawned = true }
-  }), /VS Code integrated browser unavailable/)
+  assert.throws(
+    () =>
+      openBrowser('http://app.localhost/', {
+        target: 'vscode',
+        env: {},
+        spawnImpl: () => {
+          spawned = true
+        },
+      }),
+    /VS Code integrated browser unavailable/,
+  )
   assert.equal(spawned, false)
 })
 
 test('native opening skips VS Code extension setup even in an editor terminal', () => {
   let bridgeChecked = false
-  assert.equal(openBrowser('http://app.localhost/', {
-    target: 'native',
-    env: { TERM_PROGRAM: 'vscode' },
-    existsSyncImpl: () => false,
-    spawnSyncImpl: () => { bridgeChecked = true },
-    spawnImpl: () => ({ unref() {} })
-  }), 'native')
+  assert.equal(
+    openBrowser('http://app.localhost/', {
+      target: 'native',
+      env: { TERM_PROGRAM: 'vscode' },
+      existsSyncImpl: () => false,
+      spawnSyncImpl: () => {
+        bridgeChecked = true
+      },
+      spawnImpl: () => ({ unref() {} }),
+    }),
+    'native',
+  )
   assert.equal(bridgeChecked, false)
 })
-
 
 test('disabled Devkit ignores browser options instead of breaking the host runner', async () => {
   const previousFlag = process.env.DEVKIT
@@ -275,8 +385,21 @@ test('disabled Devkit ignores browser options instead of breaking the host runne
   process.env.DEVKIT_OPEN_BROWSER = 'unrelated-browser-setting'
   try {
     assert.equal(await preflight({ repoRoot: '/missing-checkout' }), null)
-    assert.equal(await preflight({ repoRoot: '/missing-checkout', openBrowser: 'unsupported' }), null)
-    assert.equal(await preflight({ repoRoot: '/missing-checkout', background: true, teardown: true }), null)
+    assert.equal(
+      await preflight({
+        repoRoot: '/missing-checkout',
+        openBrowser: 'unsupported',
+      }),
+      null,
+    )
+    assert.equal(
+      await preflight({
+        repoRoot: '/missing-checkout',
+        background: true,
+        teardown: true,
+      }),
+      null,
+    )
   } finally {
     if (previousFlag === undefined) delete process.env.DEVKIT
     else process.env.DEVKIT = previousFlag

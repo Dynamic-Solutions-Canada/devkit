@@ -12,25 +12,38 @@ const CHILD_FLAG = 'DEVKIT_BACKGROUND_CHILD'
 export async function launchBackgroundRunner(
   config,
   identity,
-  { spawnImpl = spawn, processTarget = process, startupTimeoutMs = 300_000 } = {}
+  {
+    spawnImpl = spawn,
+    processTarget = process,
+    startupTimeoutMs = 300_000,
+  } = {},
 ) {
-  if (!processTarget.argv[1]) throw new Error('devkit: background mode requires a Node runner entry point')
+  if (!processTarget.argv[1])
+    throw new Error(
+      'devkit: background mode requires a Node runner entry point',
+    )
   const logDir = path.join(config.configDir, 'logs')
   mkdirSync(logDir, { recursive: true })
   const logPath = path.join(logDir, `${identity.slug}.log`)
   const output = openSync(logPath, 'a', 0o600)
   let child
   try {
-    child = spawnImpl(processTarget.execPath, [
-      ...processTarget.execArgv,
-      ...processTarget.argv.slice(1).filter((argument) => argument !== '--background')
-    ], {
-      cwd: processTarget.cwd(),
-      env: { ...processTarget.env, [CHILD_FLAG]: '1' },
-      detached: true,
-      windowsHide: true,
-      stdio: ['ignore', output, output, 'ipc']
-    })
+    child = spawnImpl(
+      processTarget.execPath,
+      [
+        ...processTarget.execArgv,
+        ...processTarget.argv
+          .slice(1)
+          .filter((argument) => argument !== '--background'),
+      ],
+      {
+        cwd: processTarget.cwd(),
+        env: { ...processTarget.env, [CHILD_FLAG]: '1' },
+        detached: true,
+        windowsHide: true,
+        stdio: ['ignore', output, output, 'ipc'],
+      },
+    )
   } finally {
     closeSync(output)
   }
@@ -66,7 +79,11 @@ export async function launchBackgroundRunner(
       fail(error)
     }
     function onExit(code, signal) {
-      fail(new Error(`devkit: background runner exited during startup (${signal ?? code}). See ${logPath}`))
+      fail(
+        new Error(
+          `devkit: background runner exited during startup (${signal ?? code}). See ${logPath}`,
+        ),
+      )
     }
     function onMessage(message) {
       if (settled || message?.type !== 'devkit-preflight-ready') return
@@ -79,7 +96,12 @@ export async function launchBackgroundRunner(
       fail(new Error(`devkit: background startup timed out. See ${logPath}`))
     }, startupTimeoutMs)
     for (const signal of ['SIGHUP', 'SIGINT', 'SIGTERM']) {
-      const handler = () => fail(new Error(`devkit: background startup cancelled by ${signal}. See ${logPath}`))
+      const handler = () =>
+        fail(
+          new Error(
+            `devkit: background startup cancelled by ${signal}. See ${logPath}`,
+          ),
+        )
       signalHandlers.set(signal, handler)
       processTarget.once(signal, handler)
     }

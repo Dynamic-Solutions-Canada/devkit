@@ -9,7 +9,7 @@ import { deriveCheckoutIdentity } from '../src/checkout-identity.mjs'
 import {
   databaseBaselineAgeDays,
   databaseBaselineLabel,
-  resolveDatabaseIdentity
+  resolveDatabaseIdentity,
 } from '../src/database.mjs'
 
 function checkout(name = null) {
@@ -18,7 +18,7 @@ function checkout(name = null) {
     gitDir: name ? `${root}/.git/worktrees/${name}` : '.git',
     gitCommonDir: '.git',
     toplevel: name ? `${root}/.worktrees/${name}` : root,
-    root
+    root,
   })
 }
 
@@ -35,7 +35,9 @@ test('database name overrides are safe to reuse inside isolated checkout servers
 })
 
 test('MariaDB baselines are per-clone dump files with measurable age', () => {
-  const baselineDir = mkdtempSync(path.join(os.tmpdir(), 'devkit-mariadb-baseline-'))
+  const baselineDir = mkdtempSync(
+    path.join(os.tmpdir(), 'devkit-mariadb-baseline-'),
+  )
   const config = { baselineDir, databaseRuntime: { key: 'mariadb-12-3-2' } }
   const identity = resolveDatabaseIdentity(checkout(), mariaProject)
   const baseline = databaseBaselineLabel(config, identity, mariaProject)
@@ -46,31 +48,49 @@ test('MariaDB baselines are per-clone dump files with measurable age', () => {
   mkdirSync(path.dirname(baseline), { recursive: true })
   writeFileSync(baseline, '-- baseline')
   const now = Date.now()
-  utimesSync(baseline, new Date(now - 2 * 86_400_000), new Date(now - 2 * 86_400_000))
-  assert.ok(Math.abs(databaseBaselineAgeDays(config, identity, mariaProject, { now }) - 2) < 0.001)
+  utimesSync(
+    baseline,
+    new Date(now - 2 * 86_400_000),
+    new Date(now - 2 * 86_400_000),
+  )
+  assert.ok(
+    Math.abs(
+      databaseBaselineAgeDays(config, identity, mariaProject, { now }) - 2,
+    ) < 0.001,
+  )
 })
 
 test('database versions use separate baselines', () => {
-  const baselineDir = mkdtempSync(path.join(os.tmpdir(), 'devkit-mariadb-version-baseline-'))
+  const baselineDir = mkdtempSync(
+    path.join(os.tmpdir(), 'devkit-mariadb-version-baseline-'),
+  )
   const identity = resolveDatabaseIdentity(checkout(), mariaProject)
-  const versioned = databaseBaselineLabel({
-    baselineDir,
-    databaseRuntime: { key: 'mariadb-10-2' }
-  }, identity, mariaProject)
+  const versioned = databaseBaselineLabel(
+    {
+      baselineDir,
+      databaseRuntime: { key: 'mariadb-10-2' },
+    },
+    identity,
+    mariaProject,
+  )
   assert.equal(versioned, path.join(baselineDir, 'app-mariadb-10-2.sql'))
 })
 
 test('PostgreSQL uses a portable dump baseline', () => {
-  const baselineDir = mkdtempSync(path.join(os.tmpdir(), 'devkit-postgres-checkout-baseline-'))
+  const baselineDir = mkdtempSync(
+    path.join(os.tmpdir(), 'devkit-postgres-checkout-baseline-'),
+  )
   const identity = resolveDatabaseIdentity(checkout(), {
-    database: { engine: 'postgres' }
+    database: { engine: 'postgres' },
   })
   const config = {
     baselineDir,
-    databaseRuntime: { engine: 'postgres', key: 'postgres-16-bookworm' }
+    databaseRuntime: { engine: 'postgres', key: 'postgres-16-bookworm' },
   }
   assert.equal(
-    databaseBaselineLabel(config, identity, { database: { engine: 'postgres' } }),
-    path.join(baselineDir, 'app-postgres-16-bookworm.sql')
+    databaseBaselineLabel(config, identity, {
+      database: { engine: 'postgres' },
+    }),
+    path.join(baselineDir, 'app-postgres-16-bookworm.sql'),
   )
 })

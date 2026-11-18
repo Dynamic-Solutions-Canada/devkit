@@ -22,22 +22,25 @@ test('checkout preparation copies local files before ensuring dependencies', asy
       calls.push(['install', options])
       return { installed: true }
     },
-    detectPackageManager: () => 'npm/test'
+    detectPackageManager: () => 'npm/test',
   })
 
   assert.deepEqual(calls, [
     ['copy', { checkout, project }],
-    ['install', {
-      repoRoot: '/checkout',
-      project,
-      packageManagerIdentity: process.env.npm_config_user_agent ?? 'npm/test'
-    }]
+    [
+      'install',
+      {
+        repoRoot: '/checkout',
+        project,
+        packageManagerIdentity: process.env.npm_config_user_agent ?? 'npm/test',
+      },
+    ],
   ])
   assert.deepEqual(result, {
     checkout,
     project,
     inherited: { copied: ['.env'], missing: [] },
-    installation: { installed: true }
+    installation: { installed: true },
   })
 })
 
@@ -45,7 +48,7 @@ test('checkout preparation is unavailable outside a Git checkout', async () => {
   const result = await prepareCheckout({
     repoRoot: '/not-a-checkout',
     readCheckout: () => null,
-    loadProject: () => assert.fail('project config must not load outside Git')
+    loadProject: () => assert.fail('project config must not load outside Git'),
   })
 
   assert.equal(result, null)
