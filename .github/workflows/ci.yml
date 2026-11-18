@@ -32,6 +32,11 @@ jobs:
       - name: Validate
         run: npm run validate
 
+      # The tracked .vsix is a documented exception to "no committed build output" (D-042);
+      # this fails when a rebuild from source no longer matches it.
+      - name: Check the tracked VS Code browser bridge
+        run: npm run check:browser-extension
+
       - name: Package VS Code browser bridge
         run: npm run build:browser-extension
 

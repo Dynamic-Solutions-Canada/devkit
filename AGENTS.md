@@ -26,7 +26,7 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 
 - Every change reaches apps only when a version is tagged and each app bumps its pin, so a breaking change needs a major version and the app updates planned with it.
 - Keep devkit domain-neutral: no app names, app settings or app behaviour. When an app needs something different, add a general option in `devkit.config.mjs` and keep the policy in the app.
-- Apps install from a git tag with no build step, so only what `files` in `package.json` lists reaches them. The `.vsix` under `vscode-extension/` is committed because `src/browser.mjs` loads it from the installed package; rebuild it with `npm run build:browser-extension` whenever the extension changes.
+- Apps install from a git tag with no build step, so only what `files` in `package.json` lists reaches them. The `.vsix` under `vscode-extension/` is committed because `src/browser.mjs` loads it from the installed package, a documented exception to the no-build-output rule. Rebuild it with `npm run build:browser-extension` whenever the extension changes, and bump the extension's version when its behaviour changes, because installed copies update only on a new version. `npm run check:browser-extension` (run in CI) fails when the tracked file no longer matches a rebuild.
 - `engines.node` is a range, not an exact pin, so apps still on an older Node line can install devkit with `engine-strict=true`. devkit itself is developed and tested on the version in `.nvmrc`.
 - The README is the canonical usage doc that apps link to; change behaviour and its README section together.
 
@@ -36,6 +36,7 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 | --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `npm test`                        | The unit tests pass on this Node                   | Behaviour against a live proxy, Docker or Paseo; one host-listener test skips itself without them |
 | `npm run build:browser-extension` | The VS Code browser bridge packages into a `.vsix` | That the extension works in VS Code                                                               |
+| `npm run check:browser-extension` | The tracked `.vsix` matches a rebuild from source  | That the extension works in VS Code; it needs network for the pinned packager                     |
 
 ## Release
 

@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "build:browser-extension": "node scripts/build-browser-extension.mjs",
+    "check:browser-extension": "node scripts/check-browser-extension.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
