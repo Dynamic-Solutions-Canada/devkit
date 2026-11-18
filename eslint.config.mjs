@@ -5,7 +5,13 @@ import globals from 'globals'
 // TypeScript and no web code, so typescript-eslint and the React rules do not apply.
 export default [
   {
-    ignores: ['**/node_modules/**', 'tmp/**', '.artifacts/**'],
+    ignores: [
+      '**/node_modules/**',
+      'tmp/**',
+      '.artifacts/**',
+      // Worktrees inside the checkout (D-032) are linted from their own checkout.
+      '.worktrees/**',
+    ],
   },
   js.configs.recommended,
   {

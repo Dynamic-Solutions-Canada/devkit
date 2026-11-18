@@ -250,6 +250,7 @@ For HTTPS on nginx, set `--public-scheme https --public-port 443`. When generati
 - A permanent route created with `devproxy add` is also a proxy consumer. Traefik remains running until that route is removed with `devproxy rm`, even when no checkout projects are active.
 - After the VS Code browser bridge is installed or updated, existing VS Code terminals must be relaunched before `--open=vscode` can find it.
 - A wildcard TLS certificate covers one hostname level, so nested worktree names on a remote domain need their own coverage.
+- Worktrees can live inside the main checkout at `.worktrees/<name>/`; devkit names and isolates each one from its git metadata, not its folder. Two things follow for the app. The primary checkout's containers mount the whole source tree, so its dev server, linters and test discovery must ignore `.worktrees/` (for Vite, `server.watch.ignored: ['**/.worktrees/**']`). And Node resolves packages by walking up parent folders, so a worktree without its own `node_modules` silently uses the primary checkout's; declare `install` in `devkit.config.mjs` so every worktree gets a local install.
 
 ## License
 
