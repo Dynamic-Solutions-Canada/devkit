@@ -257,7 +257,8 @@ async function prune(config, args) {
   const checkout = checkoutIdentity(repoRoot)
   if (!checkout) fail(`${repoRoot} is not a git checkout`)
   const project = await loadProjectConfig(repoRoot)
-  config = selectDatabaseRuntime(config, project, checkout)
+  // Called only to reject an unsupported database engine before touching any volume.
+  selectDatabaseRuntime(config, project, checkout)
   const identity = resolveDatabaseIdentity(checkout, project)
 
   const live = new Set(liveComposeProjects())

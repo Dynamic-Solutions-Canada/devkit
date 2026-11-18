@@ -282,7 +282,7 @@ async function requireProjectDependencies(config, project, targets = {}) {
  * two Vite settings that the PROXY requires rather than the project. Everything else is the
  * project's to name, because only it knows which variables its servers read.
  */
-function baseEnv({ identity, ports, url, urls, databaseUrl, proxyAddress }) {
+function baseEnv({ identity, url, urls, databaseUrl, proxyAddress }) {
   return {
     DATABASE_URL: databaseUrl,
     DEVKIT_URL: url,

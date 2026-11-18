@@ -20,7 +20,7 @@ function fixture(t) {
     if (existsSync(directory)) {
       for (const file of readdirSync(directory)) {
         const record = path.join(directory, file)
-        try { process.kill(JSON.parse(readFileSync(record)).pid, 'SIGTERM') } catch {}
+        try { process.kill(JSON.parse(readFileSync(record)).pid, 'SIGTERM') } catch { /* the runner already exited */ }
         const deadline = Date.now() + 3000
         while (existsSync(record) && Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 25))
@@ -131,7 +131,7 @@ test('background runner survives parent exit, rejects duplicates without Docker 
   }
   const identity = checkoutIdentity(repo)
   t.after(() => {
-    try { process.kill(JSON.parse(readFileSync(runnerFilePath(config, identity))).pid, 'SIGTERM') } catch {}
+    try { process.kill(JSON.parse(readFileSync(runnerFilePath(config, identity))).pid, 'SIGTERM') } catch { /* the runner already exited */ }
   })
   const start = await runNode(script, ['--background'], options)
   assert.equal(start.code, 0, start.output)

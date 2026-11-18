@@ -1,0 +1,2 @@
+# npm writes the lockfile; formatting it would only fight the next install.
+package-lock.json
