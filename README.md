@@ -111,6 +111,37 @@ npm run dev -- --open=vscode
 
 Preflight reads these arguments from its own process. Runners that consume arguments in another process must forward the choice as `preflight({ repoRoot, openBrowser: true })`, or use `openBrowser: 'native'` or `'vscode'`. Pass `false` to suppress opening for a particular call. `DEVKIT_OPEN_BROWSER=1` (or `native`/`vscode`) also opts in when a runner cannot forward arguments; command-line options take precedence. `DEVKIT_OPEN_BROWSER=0` leaves opening disabled.
 
+### Running tests
+
+`devkit-test` finds and runs every `node --test` file in the app, so a test added in a new folder runs without editing a script. Point the app's `test` script at it:
+
+```json
+"scripts": {
+  "test": "devkit-test",
+  "test:api": "devkit-test apps/api",
+  "test:integration": "devkit-test --integration"
+}
+```
+
+It walks the whole repository for `*.test.ts`, `*.test.tsx` and `*.test.mjs`, skipping `node_modules`, `dist`, `build`, `coverage`, `external`, `tmp` and every folder whose name starts with a dot (so `.worktrees/` and `.git/` are never searched). Symlinked folders are not followed. Paths narrow the search; arguments starting with `--` pass through to `node --test`, for example `devkit-test -- --test-concurrency=1`. TypeScript tests run with `--import tsx`, so the app needs `tsx` as a dev dependency; devkit does not provide it. Finding no test files is a failure, not a pass.
+
+Tests that need a database are named `*.integration.test.ts` (or `.tsx`, `.mjs`). The default run leaves them out, so `validate` needs nothing provisioned, and `devkit-test --integration` runs only those, one file at a time, because they share one database. Every test file belongs to exactly one of the two runs.
+
+Two options in `devkit.config.mjs` cover the rest:
+
+```js
+export default {
+  test: {
+    // Folder names skipped at any depth, or repo-relative folder paths.
+    ignore: ['android', 'ios'],
+    // Extra file endings the default run leaves out.
+    skipSuffixes: ['.e2e.test.ts'],
+  },
+}
+```
+
+Unlike the `devkit` commands, `devkit-test` needs no bootstrapped machine and does not switch Node through nvm: it runs on the Node that started it, so it works the same in CI and inside containers.
+
 ### Pinned host runtimes
 
 Devkit CLI commands respect the current checkout's `.nvmrc`, including non-interactive worktree hooks. They select an already-installed runtime from `NVM_DIR` (default `~/.nvm`), put its tools first on PATH, and check exact npm pins in `package.json`. Installed nvm aliases are supported; exact versions make setup reproducible. Missing runtimes or conflicting pins stop before installs or infrastructure changes. Devkit never installs Node/npm or changes nvm's default.
@@ -139,6 +170,7 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 | `devproxy add <name> <port>`                                     | route any host process through `<name>.localhost`                                                                                                      |
 | `devproxy rm <name>`                                             | remove a route added with `devproxy add`                                                                                                               |
 | `devproxy ls`                                                    | list every route and whether it is answering                                                                                                           |
+| `devkit-test [--integration] [paths...]`                         | run the app's `node --test` files, or only its database tests; see [Running tests](#running-tests)                                                     |
 
 `devkit` with no command prints the full option list.
 

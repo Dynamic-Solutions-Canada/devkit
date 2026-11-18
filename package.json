@@ -14,7 +14,8 @@
   },
   "bin": {
     "devkit": "bin/devkit.mjs",
-    "devproxy": "bin/devproxy.mjs"
+    "devproxy": "bin/devproxy.mjs",
+    "devkit-test": "bin/devkit-test.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",
@@ -33,7 +34,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "node bin/devkit-test.mjs",
     "validate": "npm run lint && npm run format:check && npm run test"
   },
   "devDependencies": {

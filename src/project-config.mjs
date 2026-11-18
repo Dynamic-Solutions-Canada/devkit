@@ -16,6 +16,8 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { TEST_FILE_SUFFIXES } from './test-runner.mjs'
+
 export const CONFIG_FILENAME = 'devkit.config.mjs'
 
 /**
@@ -58,6 +60,12 @@ const DEFAULTS = {
    * running the code I am editing?). Each returns `{ state, label, detail, fix }` or nothing.
    */
   checks: [],
+  /**
+   * What `devkit-test` skips: `ignore` lists extra folder names (any depth) or repo-relative folder
+   * paths, and `skipSuffixes` lists extra file endings the unit run leaves out. Database tests named
+   * `*.integration.test.*` are already split out by default and need no entry here.
+   */
+  test: { ignore: [], skipSuffixes: [] },
 }
 
 function fail(message) {
@@ -208,7 +216,37 @@ function validate(config) {
   ) {
     fail('`checks` must be an array of functions')
   }
+  validateTest(config.test)
   return config
+}
+
+/** True when `suffix` is a string ending in one of the test file endings, e.g. `.integration.test.ts`. */
+function isTestFileSuffix(suffix) {
+  if (typeof suffix !== 'string') return false
+  return TEST_FILE_SUFFIXES.some((ending) => suffix.endsWith(ending))
+}
+
+/** Validates the `devkit-test` options; both lists are plain strings. */
+function validateTest(test) {
+  if (!test || typeof test !== 'object' || Array.isArray(test)) {
+    fail('`test` must be an object with optional `ignore` and `skipSuffixes`')
+  }
+  if (
+    !Array.isArray(test.ignore) ||
+    test.ignore.some((entry) => !isRepoRelativePath(entry))
+  ) {
+    fail(
+      '`test.ignore` must be an array of folder names or repo-relative paths',
+    )
+  }
+  if (
+    !Array.isArray(test.skipSuffixes) ||
+    test.skipSuffixes.some((suffix) => !isTestFileSuffix(suffix))
+  ) {
+    fail(
+      '`test.skipSuffixes` must be file endings such as ".integration.test.ts"',
+    )
+  }
 }
 
 /** Validates the narrow, package-manager-agnostic checkout install declaration. */
@@ -265,11 +303,20 @@ export async function loadProjectConfig(repoRoot) {
   ) {
     fail('`database` must be an object with an `engine` and optional `name`')
   }
+  if (
+    provided.test !== undefined &&
+    (!provided.test ||
+      typeof provided.test !== 'object' ||
+      Array.isArray(provided.test))
+  ) {
+    fail('`test` must be an object with optional `ignore` and `skipSuffixes`')
+  }
 
   return validate({
     ...DEFAULTS,
     ...provided,
     database: { ...DEFAULTS.database, ...provided.database },
+    test: { ...DEFAULTS.test, ...provided.test },
     configPath,
   })
 }
