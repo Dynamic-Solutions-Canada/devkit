@@ -1,8 +1,6 @@
 # devkit
 
-Devkit gives each Git checkout and worktree its own `*.localhost` hostname, application port,
-database container, and database volume. The editor stays on the host; project processes run in
-containers that mount the source tree.
+devkit is the shared local development tooling for the web apps. It gives each Git checkout and worktree its own `*.localhost` hostname, application port, database container, and database volume, so several branches of one app, and several apps, run side by side on one machine. The editor stays on the host; project processes run in containers that mount the source tree. Apps install it as a dev dependency pinned to a git tag; it is never a runtime or production dependency.
 
 ```text
 printstream        -> http://printstream.localhost
@@ -10,11 +8,9 @@ worktree fix-123   -> http://fix-123.printstream.localhost
 game-is-up         -> http://game-is-up.localhost
 ```
 
-By default, the only machine-wide service is Traefik on loopback port 80. It starts when the first routed
-project starts and is removed when the last route closes, allowing Docker Desktop to idle. Checkout
-stacks do not share Docker networks or databases. Inactive stacks keep only their named volumes.
+By default, the only machine-wide service is Traefik on loopback port 80. It starts when the first routed project starts and is removed when the last route closes, allowing Docker Desktop to idle. Checkout stacks do not share Docker networks or databases. Inactive stacks keep only their named volumes.
 
-## Setup
+## Add devkit to an app
 
 Requires Node 22.12 or later on the 22 or 24 line. devkit is developed on the Node version in `.nvmrc`, but `engines.node` stays a range so apps still on Node 22 can install it with `engine-strict=true`. This is a deliberate, temporary exception to the exact-pin rule for a shared library; the range narrows to the exact fleet version once every app has moved to it.
 
@@ -23,112 +19,9 @@ npm install --save-dev github:RyanEwen/devkit
 npx devkit bootstrap
 ```
 
-Bootstrap installs the proxy and database Compose definitions under `~/.config/devkit` and writes
-the marker that enables Devkit. Devkit stays off inside containers, when
-`DEVKIT=0`, or before bootstrap.
+Bootstrap installs the proxy and database Compose definitions under `~/.config/devkit` and writes the marker that enables Devkit. Devkit stays off inside containers, when `DEVKIT=0`, or before bootstrap. An app then opts in with a `devkit.config.mjs` and by calling `preflight()` from its dev runner, both described below.
 
-### Remote development and an existing nginx server
-
-Localhost remains the default domain. Machine settings can add secondary domains and choose one
-for printed URLs, browser opening, dependency origins, and application environment values. Every
-configured domain routes to the same checkout; changing a preference does not change application
-ports, database names, volumes, or Compose project names.
-
-For a host nginx server that already owns port 80:
-
-```bash
-devkit bootstrap --secondary-domain server.home --preferred-domain server.home \
-  --proxy-port 8080 --public-port 80
-devkit nginx --allow 192.168.2.0/24 > /tmp/devkit.conf
-```
-
-Install the generated file in nginx's `http` configuration, validate with `nginx -t`, and reload
-nginx. The generated rule preserves Host and WebSocket headers and disables response buffering.
-Exact nginx virtual hosts retain precedence, so an existing `speedtest.server.home` site can
-coexist with the wildcard. The base `server.home` site is not claimed by devkit. The generator
-permits loopback clients plus each subnet explicitly passed with `--allow`.
-
-Clients need DNS for `*.server.home` pointing to the server's LAN IP, including nested names such
-as `fix-123.printstream.server.home`. The default localhost aliases still resolve to the browser
-machine; use the secondary domain from a remote browser. Rerunning bootstrap preserves the saved
-settings. Restart existing runners after changing routing settings so their routes, Vite allowed
-hosts, and application origins are refreshed. Existing permanent `devproxy` routes can be refreshed
-by repeating `devproxy add <name> <port>`.
-
-On native Linux, checkout ports bound only to host loopback need Traefik's host networking mode.
-When nginx also runs in Docker, its loopback is separate from the host's. Bind Traefik to nginx's
-Docker bridge gateway, and use that private address as nginx's upstream. For example, if nginx's
-bridge gateway is `172.24.0.1`:
-
-```bash
-devkit bootstrap --secondary-domain server.home --preferred-domain server.home \
-  --proxy-network host --proxy-bind-address 172.24.0.1 \
-  --proxy-port 18080 --public-port 80
-devkit nginx --allow 192.168.2.0/24 --allow 172.24.0.1 > /tmp/devkit.conf
-```
-
-Use your actual bridge gateway and client subnet. Host networking requires Docker's host networking
-support; bridge mode remains the default. IPv4 loopback (`127.0.0.1`) is always the required listener. IPv6 loopback (`::1`) and the
-selected private interface each run in a separate optional proxy container. A disconnected LAN,
-a stale saved address, or an unavailable IPv6 listener produces a warning and leaves IPv4 local
-routes working. No listener binds a wildcard interface.
-
-Localhost aliases always use HTTP and `proxyPort` directly, even when remote names use HTTPS or
-a different `publicPort`. For the example above, `http://app.localhost:18080` remains available
-while `http://app.server.home` continues to use nginx. Public preferred origins are preserved for
-application URLs and dependency origins; internal readiness checks use `127.0.0.1:proxyPort` with
-the public Host header, so remote DNS and TLS termination are not startup requirements.
-
-After upgrading Devkit, the next startup or `devkit bootstrap` refreshes the managed proxy
-configuration, including machines with an older single-interface host listener. Existing route
-files and route leases remain compatible. Startup repairs the proxy before probing independently
-running dependency projects. `devkit doctor` checks required loopback HTTP and reports optional
-listener failures as warnings. To restore remote access after a network change, update the saved
-private address with `devkit bootstrap --proxy-bind-address <current-private-IP>` and check your
-secondary-domain DNS; this is independent of local startup.
-
-The machine marker (`~/.config/devkit/host.json`, honoring `DEVKIT_CONFIG_DIR` and XDG) stores:
-
-```json
-{
-  "enabled": true,
-  "domain": "localhost",
-  "secondaryDomains": ["server.home"],
-  "preferredDomain": "server.home",
-  "proxyPort": 18080,
-  "publicPort": 80,
-  "publicScheme": "http",
-  "proxyNetwork": "host",
-  "proxyBindAddress": "172.24.0.1"
-}
-```
-
-Without `--preferred-domain`, secondary domains add aliases while localhost stays preferred.
-`--secondary-domain` can be repeated; providing it replaces the saved secondary-domain list.
-`preflight()` provides the preferred `url` and all configured `urls` (preferred first), also exposed
-as `DEVKIT_URL` and JSON-encoded `DEVKIT_URLS`. `proxyAddress` (also `DEVKIT_PROXY_ADDRESS`) is the
-address a container should map dependency hostnames to in Compose `extra_hosts`: the private bind
-address in host-network mode, where Docker's `host-gateway` does not reach the proxy, and
-`host-gateway` otherwise. The `domain` context value is the preferred suffix
-for constructing sibling service hostnames without a runtime dependency. Projects that enforce browser origins should use
-`urls` to populate their own allowlist if they need both origins for cross-origin requests or auth.
-Vite's allowed hosts include every configured checkout hostname automatically. Browser storage,
-cookies, and authentication registrations remain specific to each origin.
-
-For HTTPS on nginx, set `--public-scheme https --public-port 443`. When generating the nginx file,
-also pass `--ssl-certificate` and `--ssl-certificate-key` with paths visible inside nginx. Certificates
-must be trusted by the browser and cover the configured names; a wildcard certificate covers one
-hostname level, so nested worktree names need additional coverage. Internal readiness checks use
-the private HTTP listener with the correct Host header and do not require LAN DNS or client CAs.
-Plain SSH sessions print the requested browser URL; VS Code Remote can use its existing client
-browser bridge.
-
-`devkit prepare` is the dependency-only entry point for a newly created checkout. It copies the
-project's declared `worktreeFiles` and materializes its declared checkout-local install without
-starting Docker, a database, the proxy, or the application. It is safe to run repeatedly and is
-available from the PATH link created by bootstrap even when the checkout has no `node_modules` yet.
-
-## Project configuration
+### Project configuration
 
 `devkit.config.mjs` contains only what cannot be derived from the checkout path:
 
@@ -160,10 +53,9 @@ export default {
 }
 ```
 
-Application processes use fixed internal ports. The browser-facing port is published to the
-checkout-specific host port. `database.hostAccess` additionally publishes the database on a
-derived `127.0.0.1` port for host-side migration and validation tools; it is never exposed on the
-LAN.
+Application processes use fixed internal ports. The browser-facing port is published to the checkout-specific host port. `database.hostAccess` additionally publishes the database on a derived `127.0.0.1` port for host-side migration and validation tools; it is never exposed on the LAN.
+
+### The dev runner
 
 The host runner combines the Devkit database definition with the project's `compose.dev.yml`:
 
@@ -192,15 +84,9 @@ if (teardown) process.exit(lifecycle.stop())
 process.exit(await lifecycle.run(['up', '--remove-orphans']))
 ```
 
-The lifecycle relays termination signals, removes the route, tears down the whole checkout stack,
-and removes the shared proxy after the final route closes. Named volumes are preserved. Pass
-`profiles` when profiled services also belong to the stack. Pass `teardown: true` to preflight for
-a `down` path so stopping a checkout does not start it first. Routes carry their runner's process
-identity, so the next lifecycle operation removes stale routes left by an abrupt process exit.
+The lifecycle relays termination signals, removes the route, tears down the whole checkout stack, and removes the shared proxy after the final route closes. Named volumes are preserved. Pass `profiles` when profiled services also belong to the stack. Pass `teardown: true` to preflight for a `down` path so stopping a checkout does not start it first. Routes carry their runner's process identity, so the next lifecycle operation removes stale routes left by an abrupt process exit.
 
-Only one development runner can own a checkout at a time. A second start fails before changing
-dependencies, containers, or routes; other worktrees still run independently. A killed runner's
-lease is recovered on the next start.
+Only one development runner can own a checkout at a time. A second start fails before changing dependencies, containers, or routes; other worktrees still run independently. A killed runner's lease is recovered on the next start.
 
 To leave development running after the terminal closes, pass `--background`:
 
@@ -209,19 +95,9 @@ npm run dev -- --background
 npm run dev -- --down
 ```
 
-Background mode detaches the same Node runner, keeps its arguments and environment, and writes
-output to `<devkit config directory>/logs/<checkout slug>.log`. The starting command reports the
-runner PID and log path after preflight succeeds; application readiness still depends on the
-project's startup and health checks. Startup failures return an error pointing to that log.
-`--down` gracefully stops the existing runner before tearing down its stack. Runners must forward
-that choice with `preflight({ repoRoot, teardown: true })` if arguments are consumed in another
-process; preflight recognizes `--down` in its own process automatically. Background
-mode can also be requested with `preflight({ repoRoot, background: true })`; it exits the invoking
-process after the child finishes preflight. It requires a Node file entry point and cannot be
-combined with teardown. Devkit's off switch still takes precedence over these options.
+Background mode detaches the same Node runner, keeps its arguments and environment, and writes its output to a log file (see [Logs](#logs)). The starting command reports the runner PID and log path after preflight succeeds; application readiness still depends on the project's startup and health checks. Startup failures return an error pointing to that log. `--down` gracefully stops the existing runner before tearing down its stack. Runners must forward that choice with `preflight({ repoRoot, teardown: true })` if arguments are consumed in another process; preflight recognizes `--down` in its own process automatically. Background mode can also be requested with `preflight({ repoRoot, background: true })`; it exits the invoking process after the child finishes preflight. It requires a Node file entry point and cannot be combined with teardown. Devkit's off switch still takes precedence over these options.
 
-Starting development leaves the browser alone by default, even when `browser` is configured.
-Pass `--open` to the project's dev runner to request opening after its health check succeeds:
+Starting development leaves the browser alone by default, even when `browser` is configured. Pass `--open` to the project's dev runner to request opening after its health check succeeds:
 
 ```bash
 npm run dev -- --open
@@ -229,100 +105,28 @@ npm run dev -- --open=native
 npm run dev -- --open=vscode
 ```
 
-`--open` chooses the VS Code integrated browser when its window-scoped bridge is available,
-otherwise the operating system browser. An explicit `--open=vscode` reports an unavailable
-bridge instead of opening another browser. Existing VS Code terminals must be relaunched after
-the bundled bridge is installed or updated.
+`--open` chooses the VS Code integrated browser when its window-scoped bridge is available, otherwise the operating system browser. An explicit `--open=vscode` reports an unavailable bridge instead of opening another browser. Existing VS Code terminals must be relaunched after the bundled bridge is installed or updated.
 
-Preflight reads these arguments from its own process. Runners that consume arguments in another
-process must forward the choice as `preflight({ repoRoot, openBrowser: true })`, or use
-`openBrowser: 'native'` or `'vscode'`. Pass `false` to suppress opening for a particular call.
-`DEVKIT_OPEN_BROWSER=1` (or `native`/`vscode`) also opts in when a runner cannot forward arguments;
-command-line options take precedence. `DEVKIT_OPEN_BROWSER=0` leaves opening disabled.
-
-## Data and worktrees
-
-Every checkout gets one private PostgreSQL or MariaDB server at `database:5432` or
-`database:3306`. The internal database name can therefore stay identical across worktrees.
-
-`devkit snapshot` writes a portable SQL baseline under `~/.config/devkit/baselines`. A new
-worktree restores that dump before the project applies its migrations. `baselinePaths` can capture
-checkout-local files with the same baseline, and `worktreeFiles` copies allowlisted ignored config
-from the primary checkout only when missing.
-
-Filesystem restore completion is recorded in `data/.devkit-baseline-restored`, only after a
-successful extraction. Files created by tests before the first start do not suppress restoration
-of the remaining baseline. Extraction never overwrites existing files. Existing checkouts without
-a receipt receive one non-overwriting restore; this does not replace identities they have already
-created. The receipt is excluded from snapshots. Remove it to retry a restore of missing files;
-removing `data/` also resets it. Refreshing the baseline does not reseed an already restored checkout.
-
-An `install` declaration makes the first preflight replace a missing, stale, or externally linked
-dependency tree with a checkout-local install. Devkit fingerprints the declared inputs, command,
-Node runtime, and invoking npm identity. Before installing, it moves any existing stale tree aside
-so npm cannot traverse borrowed links into a read-only checkout; a failed replacement restores the
-original tree. Devkit adds the short-lived backup pattern to Git's local exclude file automatically,
-so projects do not need to commit a tool-specific ignore rule. This lets a worktree start with shared
-dependencies while still guaranteeing that source-mounted containers receive a real local directory.
-
-### Using a dependency's worktree
-
-A declared dependency normally resolves to its project's primary checkout, such as
-`platform.localhost`. To test two branches together, point one checkout's dependency at a linked
-worktree of the other project:
-
-```bash
-devkit use platform bulk-email-pickup-limits   # use bulk-email-pickup-limits.platform.localhost
-devkit use                                     # list each dependency, its checkout, and its health
-devkit use platform --primary                  # go back to platform.localhost
-```
-
-The worktree name is the first part of that worktree's hostname, as shown by its `devkit doctor`.
-Git can name a worktree differently from its directory, so `devkit use` only accepts a worktree
-whose dev server is running, lists the running ones when the name does not match, and shows the
-directory and branch it selected. Startup repeats that line, so a surprising branch is visible.
-The choice applies only to the checkout where you ran the command, and takes effect on its next dev
-start: the startup health check, `devkit doctor`, and the `dependencyOrigins` passed to `env()`
-all use the selected worktree. A container that resolves dependency hostnames through
-`extra_hosts` should derive the hostname from `dependencyOrigins` rather than hard-coding it, and
-map it to `proxyAddress`, for example `"${PLATFORM_HOSTNAME}:${DEVKIT_PROXY_ADDRESS}"`.
-
-The choice is stored under `~/.config/devkit/dependency-targets`, never in either repository, with
-the path of the checkout that made it. If that checkout moves, or a new worktree reuses a removed
-one's name, startup stops and asks you to choose again with `devkit use`, rather than guessing.
-`devkit cleanup --yes` removes it with the worktree's other private state. A damaged file stops
-startup and makes `devkit doctor` report the dependency as unknown, rather than silently falling
-back to the primary checkout; stopping a checkout still works.
+Preflight reads these arguments from its own process. Runners that consume arguments in another process must forward the choice as `preflight({ repoRoot, openBrowser: true })`, or use `openBrowser: 'native'` or `'vscode'`. Pass `false` to suppress opening for a particular call. `DEVKIT_OPEN_BROWSER=1` (or `native`/`vscode`) also opts in when a runner cannot forward arguments; command-line options take precedence. `DEVKIT_OPEN_BROWSER=0` leaves opening disabled.
 
 ### Pinned host runtimes
 
-Devkit CLI commands respect the current checkout's `.nvmrc`, including non-interactive worktree
-hooks. They select an already-installed runtime from `NVM_DIR` (default `~/.nvm`), put its tools
-first on PATH, and check exact npm pins in `package.json`. Installed nvm aliases are supported;
-exact versions make setup reproducible. Missing runtimes or conflicting pins stop before installs
-or infrastructure changes. Devkit never installs Node/npm or changes nvm's default.
+Devkit CLI commands respect the current checkout's `.nvmrc`, including non-interactive worktree hooks. They select an already-installed runtime from `NVM_DIR` (default `~/.nvm`), put its tools first on PATH, and check exact npm pins in `package.json`. Installed nvm aliases are supported; exact versions make setup reproducible. Missing runtimes or conflicting pins stop before installs or infrastructure changes. Devkit never installs Node/npm or changes nvm's default.
 
-Use `devkit run npm run dev` to select the runtime before a project runner starts. A Paseo setup
-hook can invoke `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@ryanewen/devkit/bin/devkit.mjs" prepare`
-when the new worktree has no dependencies yet; `prepare` selects the target worktree's runtime.
-Apply the same launcher to dev, teardown, build and agent-hook commands. Projects without `.nvmrc`
-retain their invoking runtime.
+Use `devkit run npm run dev` to select the runtime before a project runner starts. A Paseo setup hook can invoke `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@ryanewen/devkit/bin/devkit.mjs" prepare` when the new worktree has no dependencies yet; `prepare` selects the target worktree's runtime. Apply the same launcher to dev, teardown, build and agent-hook commands. Projects without `.nvmrc` retain their invoking runtime.
 
-Library calls to `preflight`, `prepareDatabase` and `prepareCheckout` validate the executing runtime
-before preparing dependencies. They fail with an actionable message instead of replaying a runner
-that might already hold a checkout lease. Command entrypoints own runtime selection. A stale outer
-npm identity is cleared so preparation and startup use the same dependency fingerprint.
+Library calls to `preflight`, `prepareDatabase` and `prepareCheckout` validate the executing runtime before preparing dependencies. They fail with an actionable message instead of replaying a runner that might already hold a checkout lease. Command entrypoints own runtime selection. A stale outer npm identity is cleared so preparation and startup use the same dependency fingerprint.
 
-Host-side tools that need only the database can call `prepareDatabase({ repoRoot })`. It installs
-declared checkout dependencies, starts and provisions the database, and returns its loopback URL
-without starting the proxy, checking other projects, restoring data, or opening a browser.
+Host-side tools that need only the database can call `prepareDatabase({ repoRoot })`. It installs declared checkout dependencies, starts and provisions the database, and returns its loopback URL without starting the proxy, checking other projects, restoring data, or opening a browser.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
+| `devkit bootstrap` | configure the machine proxy and database definitions; routing options are under [Remote development](#remote-development-and-an-existing-nginx-server) |
+| `devkit prepare` | copy this checkout's `worktreeFiles` and install its dependencies, without starting anything |
 | `devkit run <command> [arguments...]` | run host tooling with the checkout's pinned Node/npm |
-| `devkit doctor` | inspect this checkout's proxy, container, database, baseline, and dependencies |
+| `devkit doctor` | inspect this checkout's URLs, proxy, container, database, baseline, and dependencies |
 | `devkit snapshot` | capture this checkout as the baseline for new worktrees |
 | `devkit reset` | rebuild a worktree database from its baseline (`--empty` skips it) |
 | `devkit prune` | find orphaned checkout database volumes (`--yes` removes them) |
@@ -331,15 +135,40 @@ without starting the proxy, checking other projects, restoring data, or opening 
 | `devkit use [<dependency> <worktree> \| <dependency> --primary]` | show or choose which checkout of each dependency this checkout uses |
 | `devkit nginx` | print nginx configuration for the configured machine domains |
 | `devproxy add <name> <port>` | route any host process through `<name>.localhost` |
+| `devproxy rm <name>` | remove a route added with `devproxy add` |
+| `devproxy ls` | list every route and whether it is answering |
 
-`devkit reset` refuses to reset the primary checkout. Port blocks and Compose project names are
-derived from checkout paths; no allocation registry or shared database profile exists.
+`devkit` with no command prints the full option list.
 
-Keep ordinary `dev:down` non-destructive. For permanent worktree removal, add
-`"dev:cleanup": "devkit cleanup --yes"` to the project's npm scripts. Cleanup gracefully stops
-the checkout runner, removes its Compose-labelled containers and networks, releases its proxy
-route, and deletes its private database volume. It refuses primary checkouts and never removes
-the Git worktree itself, baseline snapshots, images, or shared caches.
+## Data and worktrees
+
+Every checkout gets one private PostgreSQL or MariaDB server at `database:5432` or `database:3306`. The internal database name can therefore stay identical across worktrees. Port blocks and Compose project names are derived from checkout paths; no allocation registry or shared database profile exists.
+
+`devkit snapshot` writes a portable SQL baseline under `~/.config/devkit/baselines`. A new worktree restores that dump before the project applies its migrations. `baselinePaths` can capture checkout-local files with the same baseline, and `worktreeFiles` copies allowlisted ignored config from the primary checkout only when missing.
+
+Filesystem restore completion is recorded in `data/.devkit-baseline-restored`, only after a successful extraction. Files created by tests before the first start do not suppress restoration of the remaining baseline. Extraction never overwrites existing files. Existing checkouts without a receipt receive one non-overwriting restore; this does not replace identities they have already created. The receipt is excluded from snapshots. Remove it to retry a restore of missing files; removing `data/` also resets it. Refreshing the baseline does not reseed an already restored checkout.
+
+`devkit prepare` is the dependency-only entry point for a newly created checkout. It copies the project's declared `worktreeFiles` and materializes its declared checkout-local install without starting Docker, a database, the proxy, or the application. It is safe to run repeatedly and is available from the PATH link created by bootstrap even when the checkout has no `node_modules` yet.
+
+An `install` declaration makes the first preflight replace a missing, stale, or externally linked dependency tree with a checkout-local install. Devkit fingerprints the declared inputs, command, Node runtime, and invoking npm identity. Before installing, it moves any existing stale tree aside so npm cannot traverse borrowed links into a read-only checkout; a failed replacement restores the original tree. Devkit adds the short-lived backup pattern to Git's local exclude file automatically, so projects do not need to commit a tool-specific ignore rule. This lets a worktree start with shared dependencies while still guaranteeing that source-mounted containers receive a real local directory.
+
+### Using a dependency's worktree
+
+A declared dependency normally resolves to its project's primary checkout, such as `platform.localhost`. To test two branches together, point one checkout's dependency at a linked worktree of the other project:
+
+```bash
+devkit use platform bulk-email-pickup-limits   # use bulk-email-pickup-limits.platform.localhost
+devkit use                                     # list each dependency, its checkout, and its health
+devkit use platform --primary                  # go back to platform.localhost
+```
+
+The worktree name is the first part of that worktree's hostname, as shown by its `devkit doctor`. Git can name a worktree differently from its directory, so `devkit use` only accepts a worktree whose dev server is running, lists the running ones when the name does not match, and shows the directory and branch it selected. Startup repeats that line, so a surprising branch is visible. The choice applies only to the checkout where you ran the command, and takes effect on its next dev start: the startup health check, `devkit doctor`, and the `dependencyOrigins` passed to `env()` all use the selected worktree. A container that resolves dependency hostnames through `extra_hosts` should derive the hostname from `dependencyOrigins` rather than hard-coding it, and map it to `proxyAddress`, for example `"${PLATFORM_HOSTNAME}:${DEVKIT_PROXY_ADDRESS}"`.
+
+The choice is stored under `~/.config/devkit/dependency-targets`, never in either repository, with the path of the checkout that made it. If that checkout moves, or a new worktree reuses a removed one's name, startup stops and asks you to choose again with `devkit use`, rather than guessing. `devkit cleanup --yes` removes it with the worktree's other private state. A damaged file stops startup and makes `devkit doctor` report the dependency as unknown, rather than silently falling back to the primary checkout; stopping a checkout still works.
+
+### Removing a worktree
+
+Keep ordinary `dev:down` non-destructive: it stops development and keeps the data. For permanent worktree removal, add `"dev:cleanup": "devkit cleanup --yes"` to the project's npm scripts, and run `devkit cleanup` first for a preview. Cleanup gracefully stops the checkout runner, removes its Compose-labelled containers and networks, releases its proxy route, and deletes its private database volume. It refuses primary checkouts and never removes the Git worktree itself, baseline snapshots, images, or shared caches.
 
 Declare additional **private** volumes in `devkit.config.mjs`, for example:
 
@@ -347,19 +176,77 @@ Declare additional **private** volumes in `devkit.config.mjs`, for example:
 cleanup: { volumes: ['{project}_slicer-data', '{project}_slicer-work'] }
 ```
 
-Names must start with `{project}-` or `{project}_`; cleanup also verifies each existing volume's
-Compose project label. Shared engine caches, CLI credentials, and other repositories' volumes
-must never appear here. Docker refuses removal of any volume still mounted by a container.
+Names must start with `{project}-` or `{project}_`; cleanup also verifies each existing volume's Compose project label. Shared engine caches, CLI credentials, and other repositories' volumes must never appear here. Docker refuses removal of any volume still mounted by a container.
 
-For Paseo, set `worktree.teardown` to
-`node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@ryanewen/devkit/bin/devkit.mjs" cleanup --paseo --yes`.
-The source checkout CLI works even when worktree setup failed before installing dependencies.
-`--paseo` requires the matching teardown environment and queries all active workspaces, including
-background workspaces, before stopping anything and again before deleting data. Remaining
-references preserve resources; an unavailable or malformed query fails closed. The CLI uses
-`PASEO_HOME`/`PASEO_HOST` and discovers `paseo-plus-plus` or `paseo` on PATH (`PASEO_CLI` overrides
-the executable). Paseo remains responsible for the final reference check and directory removal.
-Do not reopen a worktree while its archive operation is running.
+For Paseo, set `worktree.teardown` to `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@ryanewen/devkit/bin/devkit.mjs" cleanup --paseo --yes`. The source checkout CLI works even when worktree setup failed before installing dependencies. `--paseo` requires the matching teardown environment and queries all active workspaces, including background workspaces, before stopping anything and again before deleting data. Remaining references preserve resources; an unavailable or malformed query fails closed. The CLI uses `PASEO_HOME`/`PASEO_HOST` and discovers `paseo-plus-plus` or `paseo` on PATH (`PASEO_CLI` overrides the executable). Paseo remains responsible for the final reference check and directory removal. Do not reopen a worktree while its archive operation is running.
 
-A permanent route created with `devproxy add` is also a proxy consumer. Traefik remains running
-until that route is removed with `devproxy rm`, even when no checkout projects are active.
+## Remote development and an existing nginx server
+
+Localhost remains the default domain. Machine settings in `~/.config/devkit/host.json` can add secondary domains and choose one for printed URLs, browser opening, dependency origins, and application environment values. The domain preference is machine configuration, so an app's own settings stay portable. Every configured domain routes to the same checkout; changing a preference does not change application ports, database names, volumes, or Compose project names. Once a secondary domain is preferred, `npm run dev` uses it while keeping the localhost aliases, and `devkit doctor` lists the checkout's preferred URL and each alternate.
+
+For a host nginx server that already owns port 80:
+
+```bash
+devkit bootstrap --secondary-domain server.home --preferred-domain server.home \
+  --proxy-port 8080 --public-port 80
+devkit nginx --allow 192.168.2.0/24 > /tmp/devkit.conf
+```
+
+Install the generated file in nginx's `http` configuration, validate with `nginx -t`, and reload nginx. The generated rule preserves Host and WebSocket headers and disables response buffering. Exact nginx virtual hosts retain precedence, so an existing `speedtest.server.home` site can coexist with the wildcard. The base `server.home` site is not claimed by devkit. The generator permits loopback clients plus each subnet explicitly passed with `--allow`.
+
+Clients need DNS for `*.server.home` pointing to the server's LAN IP, including nested names such as `fix-123.printstream.server.home`. The default localhost aliases still resolve to the browser machine; use the secondary domain from a remote browser. Rerunning bootstrap preserves the saved settings. Restart existing runners after changing routing settings so their routes, Vite allowed hosts, and application origins are refreshed. Existing permanent `devproxy` routes can be refreshed by repeating `devproxy add <name> <port>`.
+
+On native Linux, checkout ports bound only to host loopback need Traefik's host networking mode. When nginx also runs in Docker, its loopback is separate from the host's. Bind Traefik to nginx's Docker bridge gateway, and use that private address as nginx's upstream. For example, if nginx's bridge gateway is `172.24.0.1`:
+
+```bash
+devkit bootstrap --secondary-domain server.home --preferred-domain server.home \
+  --proxy-network host --proxy-bind-address 172.24.0.1 \
+  --proxy-port 18080 --public-port 80
+devkit nginx --allow 192.168.2.0/24 --allow 172.24.0.1 > /tmp/devkit.conf
+```
+
+Use your actual bridge gateway and client subnet. Host networking requires Docker's host networking support; bridge mode remains the default. IPv4 loopback (`127.0.0.1`) is always the required listener. IPv6 loopback (`::1`) and the selected private interface each run in a separate optional proxy container. A disconnected LAN, a stale saved address, or an unavailable IPv6 listener produces a warning and leaves IPv4 local routes working. No listener binds a wildcard interface.
+
+Localhost aliases always use HTTP and `proxyPort` directly, even when remote names use HTTPS or a different `publicPort`. For the example above, `http://app.localhost:18080` remains available while `http://app.server.home` continues to use nginx. Public preferred origins are preserved for application URLs and dependency origins; internal readiness checks use `127.0.0.1:proxyPort` with the public Host header, so remote DNS and TLS termination are not startup requirements.
+
+After upgrading Devkit, the next startup or `devkit bootstrap` refreshes the managed proxy configuration, including machines with an older single-interface host listener. Existing route files and route leases remain compatible. Startup repairs the proxy before probing independently running dependency projects. `devkit doctor` checks required loopback HTTP and reports optional listener failures as warnings. To restore remote access after a network change, update the saved private address with `devkit bootstrap --proxy-bind-address <current-private-IP>` and check your secondary-domain DNS; this is independent of local startup.
+
+The machine marker (`~/.config/devkit/host.json`, honoring `DEVKIT_CONFIG_DIR` and XDG) stores:
+
+```json
+{
+  "enabled": true,
+  "domain": "localhost",
+  "secondaryDomains": ["server.home"],
+  "preferredDomain": "server.home",
+  "proxyPort": 18080,
+  "publicPort": 80,
+  "publicScheme": "http",
+  "proxyNetwork": "host",
+  "proxyBindAddress": "172.24.0.1"
+}
+```
+
+Without `--preferred-domain`, secondary domains add aliases while localhost stays preferred. `--secondary-domain` can be repeated; providing it replaces the saved secondary-domain list. `preflight()` provides the preferred `url` and all configured `urls` (preferred first), also exposed as `DEVKIT_URL` and JSON-encoded `DEVKIT_URLS`. `proxyAddress` (also `DEVKIT_PROXY_ADDRESS`) is the address a container should map dependency hostnames to in Compose `extra_hosts`: the private bind address in host-network mode, where Docker's `host-gateway` does not reach the proxy, and `host-gateway` otherwise. The `domain` context value is the preferred suffix for constructing sibling service hostnames without a runtime dependency. Projects that enforce browser origins should use `urls` to populate their own allowlist if they need both origins for cross-origin requests or auth. Vite's allowed hosts include every configured checkout hostname automatically. Browser storage, cookies, and authentication registrations remain specific to each origin.
+
+For HTTPS on nginx, set `--public-scheme https --public-port 443`. When generating the nginx file, also pass `--ssl-certificate` and `--ssl-certificate-key` with paths visible inside nginx. Certificates must be trusted by the browser and cover the configured names; a wildcard certificate covers one hostname level, so nested worktree names need additional coverage. Internal readiness checks use the private HTTP listener with the correct Host header and do not require LAN DNS or client CAs. Plain SSH sessions print the requested browser URL; VS Code Remote can use its existing client browser bridge.
+
+## Logs
+
+- **Foreground runs** write to the terminal that started them; devkit keeps no log file for them.
+- **Background runs** (`--background`) append the runner's output to `<devkit config directory>/logs/<checkout slug>.log`, which is `~/.config/devkit/logs/` unless `DEVKIT_CONFIG_DIR` or `XDG_CONFIG_HOME` moves it. The file is created readable only by the user and is never rotated, so delete it when it grows.
+- **The proxy** (Traefik) logs warnings and errors to its container output; read them with `docker logs` on the Traefik container. Access logging is off on purpose.
+
+## Limits and gotchas
+
+- Devkit is development tooling only. It does not deploy, run in CI, or take part in an app's production runtime.
+- `devkit reset` refuses the primary checkout, and `devkit cleanup` refuses primary checkouts; both act only on linked worktrees.
+- Only one runner owns a checkout at a time; start a second copy of the same checkout and it fails before changing anything.
+- Devkit never installs Node or npm. A missing runtime named by `.nvmrc` stops startup with the `nvm install` to run.
+- A permanent route created with `devproxy add` is also a proxy consumer. Traefik remains running until that route is removed with `devproxy rm`, even when no checkout projects are active.
+- After the VS Code browser bridge is installed or updated, existing VS Code terminals must be relaunched before `--open=vscode` can find it.
+- A wildcard TLS certificate covers one hostname level, so nested worktree names on a remote domain need their own coverage.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Dynamic Solutions.
