@@ -22,6 +22,7 @@ export {
 export { devkitConfig, devkitConfigDir, devkitMarkerPath } from './config.mjs'
 export { CONFIG_FILENAME, loadProjectConfig } from './project-config.mjs'
 export { findTestFiles, runTests } from './test-runner.mjs'
+export { waitForDatabase } from './database-wait.mjs'
 export { inheritWorktreeFiles } from './worktree-files.mjs'
 export { checkoutCompose } from './checkout-compose.mjs'
 export { checkoutComposeLifecycle } from './checkout-compose-lifecycle.mjs'

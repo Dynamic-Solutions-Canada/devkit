@@ -139,6 +139,31 @@ export default {
 
 `generated` takes `runner`, `paseo` and `scripts`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
 
+### Waiting for the database and the Vite server block
+
+Two small helpers replace code every app copied. Both need no bootstrapped machine.
+
+`devkit-wait-for-db` waits until the database in `DATABASE_URL` accepts connections, for the app's `db:wait` script inside `dev:container`: `"db:wait": "devkit-wait-for-db"`. It knows the default PostgreSQL and MariaDB ports, never prints the password, and exits 1 after `DB_WAIT_TIMEOUT_MS` (default 60000), retrying every `DB_WAIT_RETRY_MS` (default 1000). From code, `waitForDatabase({ url })` does the same and resolves `{ ok, host, port }`.
+
+`devkitViteServer(env)` from `@dynamic-solutions-canada/devkit/vite` returns the `server` options devkit's environment decides: the in-container port, the bind address the proxy can reach, the checkout's allowed hostnames, and a watcher that ignores `.worktrees/`. The app spreads it and keeps its own proxy:
+
+```ts
+import { devkitViteServer } from '@dynamic-solutions-canada/devkit/vite'
+
+export default defineConfig(({ mode }) => {
+  // loadEnv reads .env files only; devkit's values arrive through process.env, so they win.
+  const env = { ...loadEnv(mode, repoRoot, 'VITE_'), ...process.env }
+  return {
+    server: {
+      ...devkitViteServer(env),
+      proxy: { '/api': { target: `http://localhost:${env.VITE_API_PORT}` } },
+    },
+  }
+})
+```
+
+Vite loads its config for production builds too, so this module has no imports and no side effects, and its options only matter to `vite dev`. A build still needs devkit installed, which it already is wherever the app's dev dependencies are.
+
 ### Running tests
 
 `devkit-test` finds and runs every `node --test` file in the app, so a test added in a new folder runs without editing a script. Point the app's `test` script at it:
@@ -200,6 +225,7 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 | `devproxy ls`                                                    | list every route and whether it is answering                                                                                                           |
 | `devkit-test [--integration] [paths...]`                         | run the app's `node --test` files, or only its database tests; see [Running tests](#running-tests)                                                     |
 | `devkit-init [--check]`                                          | write or check the generated dev files; see [Generated dev files](#generated-dev-files)                                                                |
+| `devkit-wait-for-db`                                             | wait until `DATABASE_URL` accepts connections; see [Waiting for the database](#waiting-for-the-database-and-the-vite-server-block)                     |
 
 `devkit` with no command prints the full option list.
 
