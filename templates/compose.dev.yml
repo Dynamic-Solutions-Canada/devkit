@@ -1,0 +1,31 @@
+# Containerized development runtime, written once by devkit-init and owned by this app from then
+# on. Devkit adds this checkout's database service. List here every variable the app's dev
+# servers read from devkit.config.mjs `env()`; Compose passes only what is named.
+services:
+  node:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+    working_dir: /workspace
+    user: "${HOST_UID:?host uid is required}:${HOST_GID:?host gid is required}"
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOME: /tmp/devkit-home
+      NODE_ENV: development
+      DATABASE_URL: ${DATABASE_URL:?database URL is required}
+      DEVKIT_FRESH: ${DEVKIT_FRESH:-0}
+      VITE_DEV_ALLOWED_HOSTS: ${VITE_DEV_ALLOWED_HOSTS:?allowed hosts are required}
+      VITE_DEV_HOST: 0.0.0.0
+      VITE_DEV_PORT: ${VITE_DEV_PORT:?vite port is required}
+    ports:
+      - "127.0.0.1:${DEVKIT_WEB_PORT:?web port is required}:${VITE_DEV_PORT:?vite port is required}"
+      - "[::1]:${DEVKIT_WEB_PORT:?web port is required}:${VITE_DEV_PORT:?vite port is required}"
+    volumes:
+      - .:/workspace
+    depends_on:
+      database:
+        condition: service_healthy
+    command: node scripts/dev/run-dev.mjs --container-runtime

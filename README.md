@@ -111,6 +111,34 @@ npm run dev -- --open=vscode
 
 Preflight reads these arguments from its own process. Runners that consume arguments in another process must forward the choice as `preflight({ repoRoot, openBrowser: true })`, or use `openBrowser: 'native'` or `'vscode'`. Pass `false` to suppress opening for a particular call. `DEVKIT_OPEN_BROWSER=1` (or `native`/`vscode`) also opts in when a runner cannot forward arguments; command-line options take precedence. `DEVKIT_OPEN_BROWSER=0` leaves opening disabled.
 
+### Generated dev files
+
+`devkit-init` writes the dev glue every app would otherwise copy by hand, and keeps it current:
+
+| Output                    | What devkit owns                                                                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/dev/run-dev.mjs` | The whole file. Do not edit it.                                                                                                                                                                                                    |
+| `package.json`            | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
+| `paseo.json`              | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
+| `compose.dev.yml`         | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
+
+The runner is the same in every app. On the host it does what [The dev runner](#the-dev-runner) shows; inside the container it runs the app's own `dev:container` npm script, which prepares the database and starts the dev servers (it sees `DEVKIT_FRESH=1` after `npm run dev -- --fresh`). Stop signals reach that script. `devkit-init` warns when `dev:container` is missing.
+
+The same pattern covers worktree setup: the owned `dev:prepare-worktree` runs `devkit prepare` and then the app's `dev:postprepare` script if it has one, for steps such as generating a database client or building a shared package. Put app steps there rather than editing `dev:prepare-worktree`.
+
+Run `npm exec devkit-init` after adding devkit and after every pin bump, and commit what it changes. Add `"check:devkit": "devkit-init --check"` to the app's `validate`: it writes nothing and fails when a generated file is out of date or was edited. JSON files are compared by value, so a formatter may lay them out differently.
+
+An app that needs its own version of an output opts out in `devkit.config.mjs`, and the check then ignores it:
+
+```js
+export default {
+  // A hand-written runner also keeps its own `dev` script and compose file.
+  generated: { runner: false },
+}
+```
+
+`generated` takes `runner`, `paseo` and `scripts`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
+
 ### Running tests
 
 `devkit-test` finds and runs every `node --test` file in the app, so a test added in a new folder runs without editing a script. Point the app's `test` script at it:
@@ -171,6 +199,7 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 | `devproxy rm <name>`                                             | remove a route added with `devproxy add`                                                                                                               |
 | `devproxy ls`                                                    | list every route and whether it is answering                                                                                                           |
 | `devkit-test [--integration] [paths...]`                         | run the app's `node --test` files, or only its database tests; see [Running tests](#running-tests)                                                     |
+| `devkit-init [--check]`                                          | write or check the generated dev files; see [Generated dev files](#generated-dev-files)                                                                |
 
 `devkit` with no command prints the full option list.
 

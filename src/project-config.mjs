@@ -66,6 +66,11 @@ const DEFAULTS = {
    * `*.integration.test.*` are already split out by default and need no entry here.
    */
   test: { ignore: [], skipSuffixes: [] },
+  /**
+   * Which outputs `devkit-init` owns. Set one to false to keep a hand-written version, such as a
+   * custom dev runner; the check then ignores it as well.
+   */
+  generated: { runner: true, paseo: true, scripts: true },
 }
 
 function fail(message) {
@@ -217,6 +222,7 @@ function validate(config) {
     fail('`checks` must be an array of functions')
   }
   validateTest(config.test)
+  validateGenerated(config.generated)
   return config
 }
 
@@ -224,6 +230,22 @@ function validate(config) {
 function isTestFileSuffix(suffix) {
   if (typeof suffix !== 'string') return false
   return TEST_FILE_SUFFIXES.some((ending) => suffix.endsWith(ending))
+}
+
+/** Validates the `devkit-init` opt-outs: an object of the three known output names, each a boolean. */
+function validateGenerated(generated) {
+  const names = Object.keys(DEFAULTS.generated)
+  if (
+    !generated ||
+    typeof generated !== 'object' ||
+    Array.isArray(generated) ||
+    Object.keys(generated).some((name) => !names.includes(name)) ||
+    names.some((name) => typeof generated[name] !== 'boolean')
+  ) {
+    fail(
+      '`generated` may set only `runner`, `paseo` and `scripts`, each true or false',
+    )
+  }
 }
 
 /** Validates the `devkit-test` options; both lists are plain strings. */
@@ -317,6 +339,7 @@ export async function loadProjectConfig(repoRoot) {
     ...provided,
     database: { ...DEFAULTS.database, ...provided.database },
     test: { ...DEFAULTS.test, ...provided.test },
+    generated: { ...DEFAULTS.generated, ...provided.generated },
     configPath,
   })
 }

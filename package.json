@@ -15,7 +15,8 @@
   "bin": {
     "devkit": "bin/devkit.mjs",
     "devproxy": "bin/devproxy.mjs",
-    "devkit-test": "bin/devkit-test.mjs"
+    "devkit-test": "bin/devkit-test.mjs",
+    "devkit-init": "bin/devkit-init.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",
@@ -25,6 +26,7 @@
     "bin",
     "src",
     "infra",
+    "templates",
     "vscode-extension",
     "README.md"
   ],
