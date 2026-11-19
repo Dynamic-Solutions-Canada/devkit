@@ -20,6 +20,7 @@ import {
   buildRemoteScript,
   deploySettings,
   parseOptions,
+  requireSitesDir,
   sshArguments,
 } from '../templates/deploy-over-ssh.mjs'
 
@@ -273,12 +274,12 @@ test('settings come from the deploy block, the engine and package.json', (t) => 
 test('the target comes from the environment and unknown options are refused', () => {
   const options = parseOptions(['--skip-validate'], {
     DEPLOY_SSH_HOST: 'deploy@server',
-    DEPLOY_REPO_PATH: '/home/apps/shop',
+    DEPLOY_REPO_PATH: '/srv/apps/shop',
     DEPLOY_BACKUP: '0',
   })
   assert.equal(options.host, 'deploy@server')
   assert.equal(options.port, '')
-  assert.equal(options.sitesDir, '/home/apps/nginx/conf.d')
+  assert.equal(options.sitesDir, '', 'the sites folder has no default')
   assert.equal(options.nginxContainer, 'nginx')
   assert.equal(options.skipBackup, true)
   assert.equal(options.skipValidate, true)
@@ -416,7 +417,7 @@ test('a docker error while looking for the database stops the deploy instead of 
 test('only a database belonging to this checkout and service counts', (t) => {
   const otherCheckout = server(t)
   const elsewhere = deploy(otherCheckout, {
-    env: { FAKE_DB_DIR: '/home/apps/other' },
+    env: { FAKE_DB_DIR: '/srv/apps/other' },
   })
   assert.equal(elsewhere.status, 0, elsewhere.stderr)
   assert.match(elsewhere.stdout, /nothing to back up/)
@@ -462,4 +463,20 @@ test('ssh gets -p only when DEPLOY_SSH_PORT is set, so an ssh config alias keeps
     'deploy@203.0.113.7',
     "bash -lc 'true'",
   ])
+})
+
+test('a deploy that installs a site file needs an absolute DEPLOY_NGINX_SITES_DIR', () => {
+  const site = { site: { source: 'nginx.server.conf', name: 'app.conf' } }
+  assert.throws(
+    () => requireSitesDir({ sitesDir: '' }, site),
+    /Set DEPLOY_NGINX_SITES_DIR .* for example \/srv\/nginx\/sites, or set deploy\.site to null/,
+  )
+  assert.throws(
+    () => requireSitesDir({ sitesDir: 'nginx/sites' }, site),
+    /must be an absolute path/,
+  )
+  assert.doesNotThrow(() =>
+    requireSitesDir({ sitesDir: '/srv/nginx/sites' }, site),
+  )
+  assert.doesNotThrow(() => requireSitesDir({ sitesDir: '' }, { site: null }))
 })
