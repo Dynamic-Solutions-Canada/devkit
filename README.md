@@ -176,14 +176,14 @@ LABEL org.opencontainers.image.revision=$REVISION org.opencontainers.image.versi
 
 The server comes from the environment, usually the app's untracked `.env`:
 
-| Variable                 | Default                              |
-| ------------------------ | ------------------------------------ |
-| `DEPLOY_SSH_HOST`        | required                             |
-| `DEPLOY_SSH_PORT`        | `22`                                 |
-| `DEPLOY_REPO_PATH`       | required: the checkout on the server |
-| `DEPLOY_BACKUP_DIR`      | `.backups`, in the server checkout   |
-| `DEPLOY_NGINX_SITES_DIR` | `/home/apps/nginx/conf.d`            |
-| `DEPLOY_NGINX_CONTAINER` | `nginx`                              |
+| Variable                 | Default                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `DEPLOY_SSH_HOST`        | required                                                            |
+| `DEPLOY_SSH_PORT`        | unset: the ssh config decides, so a host alias keeps its own `Port` |
+| `DEPLOY_REPO_PATH`       | required: the checkout on the server                                |
+| `DEPLOY_BACKUP_DIR`      | `.backups`, in the server checkout                                  |
+| `DEPLOY_NGINX_SITES_DIR` | `/home/apps/nginx/conf.d`                                           |
+| `DEPLOY_NGINX_CONTAINER` | `nginx`                                                             |
 
 What belongs to the app goes in `devkit.config.mjs`, all optional:
 

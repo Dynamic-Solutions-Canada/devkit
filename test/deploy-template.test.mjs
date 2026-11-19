@@ -20,6 +20,7 @@ import {
   buildRemoteScript,
   deploySettings,
   parseOptions,
+  sshArguments,
 } from '../templates/deploy-over-ssh.mjs'
 
 const SHA = 'a'.repeat(40)
@@ -276,7 +277,7 @@ test('the target comes from the environment and unknown options are refused', ()
     DEPLOY_BACKUP: '0',
   })
   assert.equal(options.host, 'deploy@server')
-  assert.equal(options.port, '22')
+  assert.equal(options.port, '')
   assert.equal(options.sitesDir, '/home/apps/nginx/conf.d')
   assert.equal(options.nginxContainer, 'nginx')
   assert.equal(options.skipBackup, true)
@@ -441,4 +442,24 @@ test('compose files in a subfolder are matched by that folder', (t) => {
   })
   assert.equal(result.status, 0, result.stderr)
   assert.ok(callIndex(result.calls, 'exec -i db123') >= 0, result.stdout)
+})
+
+test('ssh gets -p only when DEPLOY_SSH_PORT is set, so an ssh config alias keeps its own port', () => {
+  const aliased = parseOptions([], {
+    DEPLOY_SSH_HOST: 'server',
+    DEPLOY_REPO_PATH: '/r',
+  })
+  assert.deepEqual(sshArguments(aliased, 'true'), ['server', "bash -lc 'true'"])
+
+  const explicit = parseOptions([], {
+    DEPLOY_SSH_HOST: 'deploy@203.0.113.7',
+    DEPLOY_SSH_PORT: '5022',
+    DEPLOY_REPO_PATH: '/r',
+  })
+  assert.deepEqual(sshArguments(explicit, 'true'), [
+    '-p',
+    '5022',
+    'deploy@203.0.113.7',
+    "bash -lc 'true'",
+  ])
 })

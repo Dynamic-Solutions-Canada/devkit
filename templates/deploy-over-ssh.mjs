@@ -14,7 +14,7 @@
  * restoring the previous one on failure; prune dangling images.
  *
  * Run with `npm run deploy:prod`, which loads `.env` when it exists. The target comes from the
- * environment: DEPLOY_SSH_HOST, DEPLOY_SSH_PORT (22), DEPLOY_REPO_PATH, DEPLOY_BACKUP_DIR
+ * environment: DEPLOY_SSH_HOST, DEPLOY_SSH_PORT (unset: ssh config decides), DEPLOY_REPO_PATH, DEPLOY_BACKUP_DIR
  * (.backups in the server checkout), DEPLOY_NGINX_SITES_DIR (/home/apps/nginx/conf.d) and
  * DEPLOY_NGINX_CONTAINER (nginx). Options: --skip-validate, --skip-backup (or DEPLOY_BACKUP=0)
  * when a dump exists another way, --no-prune (or DEPLOY_PRUNE=0), --dry-run, --help.
@@ -86,7 +86,8 @@ export function parseOptions(argv, env) {
     skipBackup: argv.includes('--skip-backup') || env.DEPLOY_BACKUP === '0',
     skipPrune: argv.includes('--no-prune') || env.DEPLOY_PRUNE === '0',
     host: env.DEPLOY_SSH_HOST?.trim() ?? '',
-    port: env.DEPLOY_SSH_PORT?.trim() || '22',
+    // Unset by default: a `-p` always wins over the port an ssh config alias sets.
+    port: env.DEPLOY_SSH_PORT?.trim() ?? '',
     repoPath: env.DEPLOY_REPO_PATH?.trim() ?? '',
     backupDir: env.DEPLOY_BACKUP_DIR?.trim() || '.backups',
     sitesDir: env.DEPLOY_NGINX_SITES_DIR?.trim() || '/home/apps/nginx/conf.d',
@@ -336,6 +337,18 @@ export function buildRemoteScript(settings, options, sha) {
   ].join('\n')
 }
 
+/**
+ * The ssh arguments for the deploy. `-p` is passed only when DEPLOY_SSH_PORT is set, so a host
+ * alias's own `Port` in the ssh config is used otherwise.
+ */
+export function sshArguments(options, script) {
+  return [
+    ...(options.port ? ['-p', options.port] : []),
+    options.host,
+    `bash -lc ${shellQuote(script)}`,
+  ]
+}
+
 /** Runs a local command, returning trimmed stdout; exits with its status when it fails. */
 function run(command, args, { cwd, capture = false }) {
   const result = spawnSync(command, args, {
@@ -396,12 +409,7 @@ async function main() {
   const settings = deploySettings(repoRoot, config)
   const sha = requireCleanPushedMain(repoRoot)
   const script = buildRemoteScript(settings, options, sha)
-  const sshArgs = [
-    '-p',
-    options.port,
-    options.host,
-    `bash -lc ${shellQuote(script)}`,
-  ]
+  const sshArgs = sshArguments(options, script)
 
   if (options.dryRun) {
     console.log(
