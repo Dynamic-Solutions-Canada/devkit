@@ -115,13 +115,14 @@ Preflight reads these arguments from its own process. Runners that consume argum
 
 `devkit-init` writes the dev glue every app would otherwise copy by hand, and keeps it current:
 
-| Output                               | What devkit owns                                                                                                                                                                                                                   |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/dev/run-dev.mjs`            | The whole file. Do not edit it.                                                                                                                                                                                                    |
-| `package.json`                       | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
-| `paseo.json`                         | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
-| `scripts/deploy/deploy-over-ssh.mjs` | The whole file, and the `deploy:prod` script that runs it. See [Deploying](#deploying).                                                                                                                                            |
-| `compose.dev.yml`                    | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
+| Output                                   | What devkit owns                                                                                                                                                                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/dev/run-dev.mjs`                | The whole file. Do not edit it.                                                                                                                                                                                                    |
+| `package.json`                           | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
+| `paseo.json`                             | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
+| `scripts/deploy/deploy-over-ssh.mjs`     | The whole file, and the `deploy:prod` script that runs it. See [Deploying](#deploying).                                                                                                                                            |
+| `scripts/hooks/generated-file-guard.mjs` | The whole file, and its one `PreToolUse` registration in `.claude/settings.json`. See [Guarding generated files](#guarding-generated-files).                                                                                       |
+| `compose.dev.yml`                        | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
 
 The runner is the same in every app. On the host it does what [The dev runner](#the-dev-runner) shows; inside the container it runs the app's own `dev:container` npm script, which prepares the database and starts the dev servers (it sees `DEVKIT_FRESH=1` after `npm run dev -- --fresh`). Stop signals reach that script. `devkit-init` warns when `dev:container` is missing.
 
@@ -138,7 +139,7 @@ export default {
 }
 ```
 
-`generated` takes `runner`, `paseo`, `scripts` and `deploy`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
+`generated` takes `runner`, `paseo`, `scripts`, `deploy` and `guard`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
 
 ### Deploying
 
@@ -181,6 +182,16 @@ export default {
 ```
 
 An app that keeps its own deploy script sets `generated: { deploy: false }`.
+
+### Guarding generated files
+
+The generated `scripts/hooks/generated-file-guard.mjs` is a Claude Code `PreToolUse` hook that refuses an agent's edit to a generated file and tells it to change the generator and regenerate instead. A file counts as generated when its header says so (for example "Generated by devkit. Do not edit", which every file `devkit-init` writes carries) or when it sits under a folder listed in `scripts/hooks/generated-file-guard.json`:
+
+```json
+{ "generatedDirectories": ["apps/mobile/android"] }
+```
+
+That JSON file is the app's, and so is `scripts/hooks/README.md`, which says what each hook blocks. `devkit-init` owns only the script and its registration in `.claude/settings.json`; other settings and hooks there are kept. Shell commands, including the regeneration itself, are never inspected, and a failure in the guard lets the edit through with a message rather than blocking all editing. It is guidance during a session, not enforcement: anything that must never be committed belongs in a git hook.
 
 ### Waiting for the database and the Vite server block
 

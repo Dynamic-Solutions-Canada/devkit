@@ -23,7 +23,13 @@ const bin = fileURLToPath(new URL('../bin/devkit-init.mjs', import.meta.url))
 const runnerTemplate = fileURLToPath(
   new URL('../templates/run-dev.mjs', import.meta.url),
 )
-const ALL = { runner: true, paseo: true, scripts: true, deploy: true }
+const ALL = {
+  runner: true,
+  paseo: true,
+  scripts: true,
+  deploy: true,
+  guard: true,
+}
 
 /** Creates a temporary app containing `files` (path to contents) and returns its root. */
 function app(t, files) {
@@ -58,11 +64,13 @@ test('a fresh app gets the runner, lifecycle scripts, paseo.json and a first com
   })
 
   assert.deepEqual(writeTemplates({ root, generated: ALL }).sort(), [
+    '.claude/settings.json',
     'compose.dev.yml',
     'package.json',
     'paseo.json',
     'scripts/deploy/deploy-over-ssh.mjs',
     'scripts/dev/run-dev.mjs',
+    'scripts/hooks/generated-file-guard.mjs',
   ])
   assert.equal(
     read(root, 'scripts/dev/run-dev.mjs'),
@@ -175,6 +183,7 @@ test('opt-outs keep a hand-written runner, its dev script and compose file out o
     paseo: true,
     scripts: true,
     deploy: false,
+    guard: false,
   }
   writeTemplates({ root, generated })
 
@@ -236,6 +245,7 @@ test('generated opt-outs in devkit.config.mjs merge with the defaults and are va
     paseo: true,
     scripts: true,
     deploy: true,
+    guard: true,
   })
 
   const bad = app(t, {
@@ -277,4 +287,45 @@ test('the deploy template is valid JavaScript', () => {
     encoding: 'utf8',
   })
   assert.equal(result.status, 0, result.stderr)
+})
+
+test("the guard is registered once in .claude/settings.json, keeping the app's own settings and hooks", (t) => {
+  const command = '"$CLAUDE_PROJECT_DIR"/scripts/hooks/generated-file-guard.mjs'
+  const appHook = {
+    matcher: 'Bash',
+    hooks: [
+      {
+        type: 'command',
+        command: '"$CLAUDE_PROJECT_DIR"/scripts/hooks/remind.mjs',
+      },
+    ],
+  }
+  const root = app(t, {
+    'package.json': { scripts: {} },
+    '.claude/settings.json': {
+      permissions: { allow: ['Bash(npm test)'] },
+      hooks: {
+        PreToolUse: [
+          appHook,
+          {
+            matcher: 'Edit',
+            hooks: [{ type: 'command', command, timeout: 30 }],
+          },
+        ],
+        Stop: [appHook],
+      },
+    },
+  })
+  writeTemplates({ root, generated: ALL })
+
+  const settings = readJson(root, '.claude/settings.json')
+  assert.deepEqual(settings.permissions, { allow: ['Bash(npm test)'] })
+  assert.deepEqual(settings.hooks.Stop, [appHook])
+  assert.equal(settings.hooks.PreToolUse.length, 2)
+  assert.deepEqual(settings.hooks.PreToolUse[0], appHook)
+  assert.deepEqual(settings.hooks.PreToolUse[1], {
+    matcher: 'Edit|MultiEdit|Write|NotebookEdit',
+    hooks: [{ type: 'command', command, timeout: 5 }],
+  })
+  assert.deepEqual(checkTemplates({ root, generated: ALL }), [])
 })

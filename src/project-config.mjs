@@ -70,7 +70,13 @@ const DEFAULTS = {
    * Which outputs `devkit-init` owns. Set one to false to keep a hand-written version, such as a
    * custom dev runner; the check then ignores it as well.
    */
-  generated: { runner: true, paseo: true, scripts: true, deploy: true },
+  generated: {
+    runner: true,
+    paseo: true,
+    scripts: true,
+    deploy: true,
+    guard: true,
+  },
   /**
    * Settings for the generated deploy script, which applies its own defaults (see
    * `templates/deploy-over-ssh.mjs`): `databaseService`, `composeFiles`, `backupsKept`, `site`
@@ -250,7 +256,7 @@ function validateGenerated(generated) {
     names.some((name) => typeof generated[name] !== 'boolean')
   ) {
     fail(
-      '`generated` may set only `runner`, `paseo`, `scripts` and `deploy`, each true or false',
+      '`generated` may set only `runner`, `paseo`, `scripts`, `deploy` and `guard`, each true or false',
     )
   }
 }

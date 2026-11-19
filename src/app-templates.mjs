@@ -23,6 +23,15 @@ const DEVKIT_CLI =
 export const RUNNER_PATH = 'scripts/dev/run-dev.mjs'
 export const COMPOSE_PATH = 'compose.dev.yml'
 export const DEPLOY_PATH = 'scripts/deploy/deploy-over-ssh.mjs'
+export const GUARD_PATH = 'scripts/hooks/generated-file-guard.mjs'
+const CLAUDE_SETTINGS_PATH = '.claude/settings.json'
+
+/** The Claude Code registration for the guard (AI-11): it only names the script. */
+const GUARD_COMMAND = `"$CLAUDE_PROJECT_DIR"/${GUARD_PATH}`
+const GUARD_HOOK = {
+  matcher: 'Edit|MultiEdit|Write|NotebookEdit',
+  hooks: [{ type: 'command', command: GUARD_COMMAND, timeout: 5 }],
+}
 
 /** The lifecycle npm scripts devkit owns (SCRIPT-7). `dev` is owned only with the runner. */
 const LIFECYCLE_SCRIPTS = {
@@ -96,6 +105,23 @@ function ownedPaseo(scripts) {
 }
 
 /**
+ * Returns Claude Code settings with exactly one guard registration under `PreToolUse`, kept in
+ * the place an earlier one held. Every other setting and hook stays as the app wrote it.
+ */
+function withGuardHook(settings) {
+  const isGuard = (entry) =>
+    entry?.hooks?.some((hook) => hook.command === GUARD_COMMAND)
+  const preToolUse = settings.hooks?.PreToolUse ?? []
+  const existing = preToolUse.findIndex(isGuard)
+  const entries = preToolUse.filter((entry) => !isGuard(entry))
+  entries.splice(existing === -1 ? entries.length : existing, 0, GUARD_HOOK)
+  return {
+    ...settings,
+    hooks: { ...settings.hooks, PreToolUse: entries },
+  }
+}
+
+/**
  * Works out every owned output for the app at `root`.
  *
  * Returns a list of `{ path, contents, current }`, where `contents` is what devkit would write and
@@ -133,6 +159,18 @@ export function planTemplates({ root, generated }) {
     add(
       DEPLOY_PATH,
       readFileSync(path.join(templatesDir, 'deploy-over-ssh.mjs'), 'utf8'),
+    )
+  }
+
+  if (generated.guard) {
+    add(
+      GUARD_PATH,
+      readFileSync(path.join(templatesDir, 'generated-file-guard.mjs'), 'utf8'),
+    )
+    const settingsFile = path.join(root, CLAUDE_SETTINGS_PATH)
+    add(
+      CLAUDE_SETTINGS_PATH,
+      formatJson(withGuardHook(readJson(settingsFile, {}))),
     )
   }
 
