@@ -10,7 +10,14 @@
  * `planTemplates` decides what each owned output should contain, `writeTemplates` applies the plan,
  * and `checkTemplates` reports drift without writing, for the app's `validate` gate.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -132,10 +139,12 @@ export function planTemplates({ root, generated }) {
   const plan = []
 
   /** Adds one output, reading what the file holds today. */
-  function add(relative, contents) {
+  function add(relative, contents, { executable = false } = {}) {
     const file = path.join(root, relative)
-    const current = existsSync(file) ? readFileSync(file, 'utf8') : null
-    plan.push({ path: relative, contents, current })
+    const exists = existsSync(file)
+    const current = exists ? readFileSync(file, 'utf8') : null
+    const isExecutable = exists && (statSync(file).mode & 0o111) !== 0
+    plan.push({ path: relative, contents, current, executable, isExecutable })
   }
 
   // package.json: set exactly the owned script names, keep everything else in place.
@@ -163,9 +172,12 @@ export function planTemplates({ root, generated }) {
   }
 
   if (generated.guard) {
+    // Claude Code runs the hook by its path, so it must be executable; without the bit the
+    // hook errors, and a guard that fails open guards nothing.
     add(
       GUARD_PATH,
       readFileSync(path.join(templatesDir, 'generated-file-guard.mjs'), 'utf8'),
+      { executable: true },
     )
     const settingsFile = path.join(root, CLAUDE_SETTINGS_PATH)
     add(
@@ -200,11 +212,14 @@ export function planTemplates({ root, generated }) {
 }
 
 /**
- * True when `current` already holds `contents`. JSON files compare by value, so an app's
- * formatter may lay them out differently without counting as drift.
+ * True when `current` already holds `contents`, and an output that must be executable is. JSON
+ * files compare by value, so an app's formatter may lay them out differently without counting as
+ * drift.
  */
-function matches({ path: relative, contents, current }) {
+function matches(output) {
+  const { path: relative, contents, current } = output
   if (current === null) return false
+  if (output.executable && !output.isExecutable) return false
   if (!relative.endsWith('.json')) return current === contents
   return (
     JSON.stringify(JSON.parse(current)) === JSON.stringify(JSON.parse(contents))
@@ -219,6 +234,7 @@ export function writeTemplates({ root, generated }) {
     const file = path.join(root, output.path)
     mkdirSync(path.dirname(file), { recursive: true })
     writeFileSync(file, output.contents)
+    if (output.executable) chmodSync(file, 0o755)
     written.push(output.path)
   }
   return written

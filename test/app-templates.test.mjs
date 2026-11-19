@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
@@ -328,4 +330,21 @@ test("the guard is registered once in .claude/settings.json, keeping the app's o
     hooks: [{ type: 'command', command, timeout: 5 }],
   })
   assert.deepEqual(checkTemplates({ root, generated: ALL }), [])
+})
+
+test('the guard hook is written executable, and the check catches a lost executable bit', (t) => {
+  const root = app(t, { 'package.json': { scripts: {} } })
+  writeTemplates({ root, generated: ALL })
+  const guard = path.join(root, 'scripts/hooks/generated-file-guard.mjs')
+  assert.equal(statSync(guard).mode & 0o777, 0o755)
+  assert.deepEqual(checkTemplates({ root, generated: ALL }), [])
+
+  chmodSync(guard, 0o644)
+  assert.deepEqual(checkTemplates({ root, generated: ALL }), [
+    'scripts/hooks/generated-file-guard.mjs',
+  ])
+  assert.deepEqual(writeTemplates({ root, generated: ALL }), [
+    'scripts/hooks/generated-file-guard.mjs',
+  ])
+  assert.equal(statSync(guard).mode & 0o777, 0o755)
 })

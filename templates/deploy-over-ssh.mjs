@@ -98,6 +98,14 @@ export function parseOptions(argv, env) {
  */
 export function deploySettings(repoRoot, config) {
   const deploy = { ...DEPLOY_DEFAULTS, ...config.deploy }
+  const pkg = JSON.parse(
+    readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
+  )
+  const version = String(pkg.version ?? '')
+  if (!version)
+    throw new Error(
+      'Set "version" in package.json; it labels the deployed image',
+    )
   const engine = config.database?.engine ?? 'postgres'
   if (!DUMPS[engine]) throw new Error(`Unsupported database engine: ${engine}`)
 
@@ -105,9 +113,6 @@ export function deploySettings(repoRoot, config) {
   if (deploy.site !== null) {
     site = { ...DEPLOY_DEFAULTS.site, ...deploy.site }
     if (!site.name) {
-      const pkg = JSON.parse(
-        readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
-      )
       const product = String(pkg.name ?? '').replace(/^@[^/]+\//, '')
       if (!product) throw new Error('Set deploy.site.name in devkit.config.mjs')
       site.name = `${product}.conf`
@@ -119,7 +124,7 @@ export function deploySettings(repoRoot, config) {
     }
   }
 
-  return { ...deploy, site, dump: DUMPS[engine] }
+  return { ...deploy, site, version, dump: DUMPS[engine] }
 }
 
 /** Lines that select the compose files, adding the server's own override when it has one. */
@@ -137,6 +142,9 @@ function composeLines(settings) {
  * Lines that dump the database before the checkout or containers change. pg_dump and
  * mariadb-dump can exit 0 after a dropped connection, so the dump must pass `gzip -t` and end with
  * the engine's completion trailer; an incomplete dump is deleted and the deploy stops.
+ *
+ * Dumps hold every user's data, so they are written in a subshell with `umask 077`: the folder
+ * is 700 and each dump 600, while the rest of the deploy keeps the checkout's normal modes.
  */
 function backupLines(settings, options, sha) {
   if (options.skipBackup) {
@@ -150,17 +158,21 @@ function backupLines(settings, options, sha) {
     'if [[ -z "$db_container" ]]; then',
     '  echo "No database container yet: nothing to back up."',
     'else',
-    `  mkdir -p ${dir}`,
-    `  backup_file=${dir}/"pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-${sha.slice(0, 12)}.sql.gz"`,
-    '  dump_ok=1',
-    `  docker compose "\${compose_args[@]}" exec -T ${service} sh -c ${shellQuote(settings.dump.command)} | gzip > "$backup_file" || dump_ok=0`,
-    `  if [[ $dump_ok -eq 0 ]] || ! gzip -t "$backup_file" || ! gzip -dc "$backup_file" | tail -5 | grep -qF ${shellQuote(settings.dump.trailer)}; then`,
-    '    rm -f "$backup_file"',
-    '    echo "The database dump is incomplete; refusing to deploy. Rerun with --skip-backup only once a dump exists another way." >&2',
-    '    exit 1',
-    '  fi',
-    '  echo "Database backed up to $backup_file ($(du -h "$backup_file" | cut -f1))"',
-    `  ls -1t ${dir}/pre-deploy-*.sql.gz 2>/dev/null | tail -n +${settings.backupsKept + 1} | xargs -r rm -f`,
+    '  (',
+    '    umask 077',
+    `    mkdir -p ${dir}`,
+    `    chmod 700 ${dir}`,
+    `    backup_file=${dir}/"pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-${sha.slice(0, 12)}.sql.gz"`,
+    '    dump_ok=1',
+    `    docker compose "\${compose_args[@]}" exec -T ${service} sh -c ${shellQuote(settings.dump.command)} | gzip > "$backup_file" || dump_ok=0`,
+    `    if [[ $dump_ok -eq 0 ]] || ! gzip -t "$backup_file" || ! gzip -dc "$backup_file" | tail -5 | grep -qF ${shellQuote(settings.dump.trailer)}; then`,
+    '      rm -f "$backup_file"',
+    '      echo "The database dump is incomplete; refusing to deploy. Rerun with --skip-backup only once a dump exists another way." >&2',
+    '      exit 1',
+    '    fi',
+    '    echo "Database backed up to $backup_file ($(du -h "$backup_file" | cut -f1))"',
+    `    ls -1t ${dir}/pre-deploy-*.sql.gz 2>/dev/null | tail -n +${settings.backupsKept + 1} | xargs -r rm -f`,
+    '  )',
     'fi',
   ]
 }
@@ -178,10 +190,16 @@ function updateLines(sha) {
   ]
 }
 
-/** Lines that start the stack and wait for every service to be healthy, or stop with the logs. */
-function startLines(settings) {
+/**
+ * Lines that start the stack and wait for every service to be healthy, or stop with the logs.
+ * DEPLOY_REVISION (the validated commit) and DEPLOY_VERSION (package.json) are exported first, so
+ * `compose.server.yml` can pass them as build args for the image's OCI labels (CTR-1).
+ */
+function startLines(settings, sha) {
   const wait = settings.healthWaitSeconds
   return [
+    `export DEPLOY_REVISION=${shellQuote(sha)}`,
+    `export DEPLOY_VERSION=${shellQuote(settings.version)}`,
     `if ! docker compose "\${compose_args[@]}" up --build -d --wait --wait-timeout ${wait}; then`,
     `  echo "A service did not become healthy within ${wait} seconds; the deploy stopped. Status and recent logs:" >&2`,
     '  docker compose "${compose_args[@]}" ps >&2 || true',
@@ -246,7 +264,7 @@ export function buildRemoteScript(settings, options, sha) {
     'fi',
     ...backupLines(settings, options, sha),
     ...updateLines(sha),
-    ...startLines(settings),
+    ...startLines(settings, sha),
     ...siteLines(settings, options),
     ...(options.skipPrune
       ? []

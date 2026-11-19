@@ -27,3 +27,17 @@ test('without devkit the options fall back to Vite defaults, still skipping work
     watch: { ignored: ['**/.worktrees/**'] },
   })
 })
+
+test('the ./vite export ships type declarations for a typed vite.config.ts', async () => {
+  const { readFileSync } = await import('node:fs')
+  const pkg = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  )
+  const types = pkg.exports['./vite'].types
+  const declarations = readFileSync(
+    new URL(`../${types}`, import.meta.url),
+    'utf8',
+  )
+  assert.match(declarations, /export function devkitViteServer\(/)
+  assert.ok(pkg.files.includes('src'), 'the declarations are packed with src/')
+})

@@ -148,13 +148,31 @@ The generated `scripts/deploy/deploy-over-ssh.mjs` deploys the current commit to
 It refuses to start unless the local tree is clean and `HEAD` is a freshly fetched `origin/main`, then runs `npm run validate` (`--skip-validate` skips it). On the server, in order, it:
 
 1. refuses a checkout with tracked changes;
-2. dumps the database from its container (`pg_dump`, or `mariadb-dump` when `database.engine` is `mariadb`), and stops unless the gzip file is intact and ends with the dump's completion line. An incomplete dump is deleted. The newest `backupsKept` dumps are kept. `--skip-backup` or `DEPLOY_BACKUP=0` skips this only when a dump exists another way. A first deploy with no database container has nothing to dump;
+2. dumps the database from its container (`pg_dump`, or `mariadb-dump` when `database.engine` is `mariadb`), and stops unless the gzip file is intact and ends with the dump's completion line. An incomplete dump is deleted. The newest `backupsKept` dumps are kept. The backup folder is made private to the deploy user (700) and each dump is 600, since dumps hold every user's data. `--skip-backup` or `DEPLOY_BACKUP=0` skips this only when a dump exists another way. A first deploy with no database container has nothing to dump;
 3. fast-forwards the checkout to `main`, and stops unless it landed on the commit validated locally;
 4. runs `docker compose up --build -d --wait`, and stops with the status and recent logs if a service is not healthy in time;
 5. installs the nginx site file if it changed: the previous file is copied to `site-backups/` beside the sites folder, the new one must pass `nginx -t`, and nginx reloads gracefully. A failed test puts the previous file back and fails the deploy;
 6. prunes dangling images (`--no-prune` or `DEPLOY_PRUNE=0` skips it).
 
 `--dry-run` runs the local refusals and prints the server script without running anything.
+
+Before `compose up`, the script exports `DEPLOY_REVISION` (the commit validated locally) and `DEPLOY_VERSION` (`version` from `package.json`, which must be set). Pass them to the image build in `compose.server.yml` so every image carries its OCI revision and version labels (CTR-1):
+
+```yaml
+services:
+  app:
+    build:
+      context: .
+      args:
+        REVISION: ${DEPLOY_REVISION:-unknown}
+        VERSION: ${DEPLOY_VERSION:-unknown}
+```
+
+```dockerfile
+ARG REVISION=unknown
+ARG VERSION=unknown
+LABEL org.opencontainers.image.revision=$REVISION org.opencontainers.image.version=$VERSION
+```
 
 The server comes from the environment, usually the app's untracked `.env`:
 
@@ -289,6 +307,8 @@ pre-commit:
 ```
 
 It walks the whole repository for `*.test.ts`, `*.test.tsx` and `*.test.mjs`, skipping `node_modules`, `dist`, `build`, `coverage`, `external`, `tmp` and every folder whose name starts with a dot (so `.worktrees/` and `.git/` are never searched). Symlinked folders are not followed. Paths narrow the search; arguments starting with `--` pass through to `node --test`, for example `devkit-test -- --test-concurrency=1`. TypeScript tests run with `--import tsx`, so the app needs `tsx` as a dev dependency; devkit does not provide it. Finding no test files is a failure, not a pass.
+
+A Prisma app's unit tests usually import code that builds the Prisma client, which reads `DATABASE_URL` even when no test connects. Give the `test` script a placeholder so the unit run needs no database: `"test": "DATABASE_URL=postgresql://unit:unit@127.0.0.1:1/unit devkit-test"`. The port is deliberately one nothing listens on, so a unit test that does try to connect fails at once instead of reaching a real database.
 
 Tests that need a database are named `*.integration.test.ts` (or `.tsx`, `.mjs`). The default run leaves them out, so `validate` needs nothing provisioned, and `devkit-test --integration` runs only those, one file at a time, because they share one database. Every test file belongs to exactly one of the two runs.
 

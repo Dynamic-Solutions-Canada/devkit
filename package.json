@@ -24,7 +24,10 @@
   "exports": {
     ".": "./src/index.mjs",
     "./identity": "./src/checkout-identity.mjs",
-    "./vite": "./src/vite.mjs"
+    "./vite": {
+      "types": "./src/vite.d.ts",
+      "default": "./src/vite.mjs"
+    }
   },
   "files": [
     "bin",

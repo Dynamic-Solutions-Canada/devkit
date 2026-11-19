@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
@@ -38,7 +39,7 @@ args="$*"
 case "$args" in
   *" ps -q "*) printf '%s' "\${FAKE_DB_CONTAINER:-}" ;;
   *" exec -T "*) printf '%b' "\${FAKE_DUMP:-}" ;;
-  *" up "*) exit "\${FAKE_UP_STATUS:-0}" ;;
+  *" up "*) echo "labels $DEPLOY_REVISION $DEPLOY_VERSION" >> "$FAKE_LOG"; exit "\${FAKE_UP_STATUS:-0}" ;;
   "exec "*" nginx -t") exit "\${FAKE_NGINX_TEST_STATUS:-0}" ;;
 esac
 `
@@ -61,6 +62,7 @@ function server(t) {
 
 const settings = (overrides = {}) => ({
   ...DEPLOY_DEFAULTS,
+  version: '1.2.3',
   site: { source: 'nginx.server.conf', name: 'app.conf' },
   dump: {
     command: 'exec pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"',
@@ -238,9 +240,13 @@ test('skip flags leave out the dump and the prune, and the override file is adde
 
 test('settings come from the deploy block, the engine and package.json', (t) => {
   const fake = server(t)
-  writeFileSync(path.join(fake.repo, 'package.json'), '{"name":"@acme/shop"}')
+  writeFileSync(
+    path.join(fake.repo, 'package.json'),
+    '{"name":"@acme/shop","version":"2.0.1"}',
+  )
   const postgres = deploySettings(fake.repo, {})
   assert.equal(postgres.site.name, 'shop.conf')
+  assert.equal(postgres.version, '2.0.1')
   assert.equal(postgres.databaseService, 'db')
   assert.equal(postgres.backupsKept, 10)
   assert.match(postgres.dump.command, /pg_dump/)
@@ -271,4 +277,44 @@ test('the target comes from the environment and unknown options are refused', ()
   assert.equal(options.skipBackup, true)
   assert.equal(options.skipValidate, true)
   assert.throws(() => parseOptions(['--branch'], {}), /Unknown argument/)
+})
+
+test('dumps are private to the deploy user while the rest of the deploy keeps normal modes', (t) => {
+  const fake = server(t)
+  const result = deploy(fake)
+  assert.equal(result.status, 0, result.stderr)
+
+  const backups = path.join(fake.repo, '.backups')
+  assert.equal(statSync(backups).mode & 0o777, 0o700)
+  const [dump] = readdirSync(backups)
+  assert.equal(statSync(path.join(backups, dump)).mode & 0o777, 0o600)
+  // The site file is written after the dump step, outside its umask.
+  assert.equal(
+    statSync(path.join(fake.sites, 'app.conf')).mode & 0o077,
+    0o044 & ~process.umask(),
+  )
+})
+
+test('an existing backup folder is tightened to 700', (t) => {
+  const fake = server(t)
+  mkdirSync(path.join(fake.repo, '.backups'), { mode: 0o755 })
+  const result = deploy(fake)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(statSync(path.join(fake.repo, '.backups')).mode & 0o777, 0o700)
+})
+
+test('the image labels get the validated commit and the package version', (t) => {
+  const fake = server(t)
+  const result = deploy(fake)
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(
+    result.calls.includes(`labels ${SHA} 1.2.3`),
+    result.calls.join('\n'),
+  )
+})
+
+test('a package.json without a version stops the deploy before it starts', (t) => {
+  const fake = server(t)
+  writeFileSync(path.join(fake.repo, 'package.json'), '{"name":"shop"}')
+  assert.throws(() => deploySettings(fake.repo, {}), /Set "version"/)
 })
