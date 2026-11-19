@@ -273,6 +273,8 @@ test('the deploy block in devkit.config.mjs is validated', async (t) => {
     ['{ backupsKept: 0 }', /positive whole number/],
     ["{ composeFiles: ['/etc/compose.yml'] }", /repo-relative/],
     ["{ site: { name: 'app' } }", /ending in \.conf/],
+    ["{ submodules: 'yes' }", /true or false/],
+    ["{ versionFrom: '../package.json' }", /repo-relative/],
   ]) {
     const bad = app(t, {
       'devkit.config.mjs': `export default { deploy: ${deploy} }\n`,

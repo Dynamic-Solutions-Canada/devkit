@@ -80,7 +80,7 @@ const DEFAULTS = {
   /**
    * Settings for the generated deploy script, which applies its own defaults (see
    * `templates/deploy-over-ssh.mjs`): `databaseService`, `composeFiles`, `backupsKept`, `site`
-   * (`{ source, name }` or null) and `healthWaitSeconds`.
+   * (`{ source, name }` or null), `healthWaitSeconds`, `submodules` and `versionFrom`.
    */
   deploy: {},
 }
@@ -277,6 +277,8 @@ function validateDeploy(deploy) {
     'backupsKept',
     'site',
     'healthWaitSeconds',
+    'submodules',
+    'versionFrom',
   ]
   const unknown = Object.keys(deploy).find((key) => !known.includes(key))
   if (unknown) fail(`\`deploy.${unknown}\` is not a deploy setting`)
@@ -301,6 +303,19 @@ function validateDeploy(deploy) {
     if (deploy[key] !== undefined && !isPositiveInteger(deploy[key])) {
       fail(`\`deploy.${key}\` must be a positive whole number`)
     }
+  }
+
+  if (
+    deploy.submodules !== undefined &&
+    typeof deploy.submodules !== 'boolean'
+  ) {
+    fail('`deploy.submodules` must be true or false')
+  }
+  if (
+    deploy.versionFrom !== undefined &&
+    !isRepoRelativePath(deploy.versionFrom)
+  ) {
+    fail('`deploy.versionFrom` must be a repo-relative path to a package.json')
   }
 
   const site = deploy.site

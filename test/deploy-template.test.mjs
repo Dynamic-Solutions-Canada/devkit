@@ -318,3 +318,64 @@ test('a package.json without a version stops the deploy before it starts', (t) =
   writeFileSync(path.join(fake.repo, 'package.json'), '{"name":"shop"}')
   assert.throws(() => deploySettings(fake.repo, {}), /Set "version"/)
 })
+
+test('submodules are synced and updated after the pull and before the stack starts', (t) => {
+  const fake = server(t)
+  writeFileSync(
+    path.join(fake.repo, '.gitmodules'),
+    '[submodule "external/promo"]\n',
+  )
+  const result = deploy(fake)
+  assert.equal(result.status, 0, result.stderr)
+
+  const pull = callIndex(result.calls, 'git pull --ff-only')
+  const sync = callIndex(result.calls, 'git submodule sync --recursive')
+  const update = callIndex(
+    result.calls,
+    'git submodule update --init --recursive',
+  )
+  const up = callIndex(result.calls, ' up ')
+  assert.ok(
+    pull < sync && sync < update && update < up,
+    result.calls.join('\n'),
+  )
+})
+
+test('a repo without submodules, or one that opts out, never runs git submodule', (t) => {
+  const plain = server(t)
+  assert.equal(callIndex(deploy(plain).calls, 'git submodule'), -1)
+
+  const optedOut = server(t)
+  writeFileSync(path.join(optedOut.repo, '.gitmodules'), '')
+  const result = deploy(optedOut, { settingsOverrides: { submodules: false } })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(callIndex(result.calls, 'git submodule'), -1)
+})
+
+test('versionFrom takes the product version from a workspace package.json', (t) => {
+  const fake = server(t)
+  writeFileSync(
+    path.join(fake.repo, 'package.json'),
+    '{"name":"shop","version":"0.0.0"}',
+  )
+  mkdirSync(path.join(fake.repo, 'apps/api'), { recursive: true })
+  writeFileSync(
+    path.join(fake.repo, 'apps/api/package.json'),
+    '{"version":"3.4.5"}',
+  )
+
+  assert.equal(deploySettings(fake.repo, {}).version, '0.0.0')
+  assert.equal(
+    deploySettings(fake.repo, {
+      deploy: { versionFrom: 'apps/api/package.json' },
+    }).version,
+    '3.4.5',
+  )
+  assert.throws(
+    () =>
+      deploySettings(fake.repo, {
+        deploy: { versionFrom: 'apps/web/package.json' },
+      }),
+    /does not exist/,
+  )
+})

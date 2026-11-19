@@ -149,14 +149,14 @@ It refuses to start unless the local tree is clean and `HEAD` is a freshly fetch
 
 1. refuses a checkout with tracked changes;
 2. dumps the database from its container (`pg_dump`, or `mariadb-dump` when `database.engine` is `mariadb`), and stops unless the gzip file is intact and ends with the dump's completion line. An incomplete dump is deleted. The newest `backupsKept` dumps are kept. The backup folder is made private to the deploy user (700) and each dump is 600, since dumps hold every user's data. `--skip-backup` or `DEPLOY_BACKUP=0` skips this only when a dump exists another way. A first deploy with no database container has nothing to dump;
-3. fast-forwards the checkout to `main`, and stops unless it landed on the commit validated locally;
+3. fast-forwards the checkout to `main`, and stops unless it landed on the commit validated locally; when the repo has a `.gitmodules`, it then runs `git submodule sync --recursive` and `git submodule update --init --recursive`, so a build that imports a submodule gets the pinned commit;
 4. runs `docker compose up --build -d --wait`, and stops with the status and recent logs if a service is not healthy in time;
 5. installs the nginx site file if it changed: the previous file is copied to `site-backups/` beside the sites folder, the new one must pass `nginx -t`, and nginx reloads gracefully. A failed test puts the previous file back and fails the deploy;
 6. prunes dangling images (`--no-prune` or `DEPLOY_PRUNE=0` skips it).
 
 `--dry-run` runs the local refusals and prints the server script without running anything.
 
-Before `compose up`, the script exports `DEPLOY_REVISION` (the commit validated locally) and `DEPLOY_VERSION` (`version` from `package.json`, which must be set). Pass them to the image build in `compose.server.yml` so every image carries its OCI revision and version labels (CTR-1):
+Before `compose up`, the script exports `DEPLOY_REVISION` (the commit validated locally) and `DEPLOY_VERSION` (`version` from `package.json`, or from the file `deploy.versionFrom` names, which must be set). Pass them to the image build in `compose.server.yml` so every image carries its OCI revision and version labels (CTR-1):
 
 ```yaml
 services:
@@ -195,6 +195,8 @@ export default {
     backupsKept: 10,
     site: { source: 'nginx.server.conf', name: 'my-app.conf' }, // name defaults to <package name>.conf; null for no site
     healthWaitSeconds: 300,
+    submodules: true, // false skips the submodule update
+    versionFrom: 'package.json', // a workspace's package.json when the product version lives there
   },
 }
 ```

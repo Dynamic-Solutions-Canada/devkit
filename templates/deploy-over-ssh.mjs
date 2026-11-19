@@ -39,6 +39,10 @@ export const DEPLOY_DEFAULTS = {
   site: { source: 'nginx.server.conf', name: null },
   /** How long every service may take to report healthy. */
   healthWaitSeconds: 300,
+  /** Update submodules after the pull, when the repo has any; a build may import them. */
+  submodules: true,
+  /** The package.json whose `version` labels the image; a workspace's when the product version lives there. */
+  versionFrom: 'package.json',
 }
 
 /** How each database engine is dumped inside its container, and the line a complete dump ends with. */
@@ -101,11 +105,20 @@ export function deploySettings(repoRoot, config) {
   const pkg = JSON.parse(
     readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
   )
-  const version = String(pkg.version ?? '')
-  if (!version)
+  const versionFile = path.join(repoRoot, deploy.versionFrom)
+  if (!existsSync(versionFile)) {
     throw new Error(
-      'Set "version" in package.json; it labels the deployed image',
+      `deploy.versionFrom names ${deploy.versionFrom}, which does not exist`,
     )
+  }
+  const version = String(
+    JSON.parse(readFileSync(versionFile, 'utf8')).version ?? '',
+  )
+  if (!version) {
+    throw new Error(
+      `Set "version" in ${deploy.versionFrom}; it labels the deployed image`,
+    )
+  }
   const engine = config.database?.engine ?? 'postgres'
   if (!DUMPS[engine]) throw new Error(`Unsupported database engine: ${engine}`)
 
@@ -177,8 +190,12 @@ function backupLines(settings, options, sha) {
   ]
 }
 
-/** Lines that fast-forward the checkout and stop unless it landed on the commit validated locally. */
-function updateLines(sha) {
+/**
+ * Lines that fast-forward the checkout, stop unless it landed on the commit validated locally,
+ * and bring submodules to the pinned commits, since a production build may import one and a
+ * fresh checkout has none.
+ */
+function updateLines(settings, sha) {
   return [
     `git fetch origin ${DEPLOY_BRANCH}`,
     `git checkout ${DEPLOY_BRANCH}`,
@@ -187,6 +204,14 @@ function updateLines(sha) {
     `  echo "Refusing to continue: the server checkout is not at ${sha.slice(0, 12)}, the commit validated locally. Did someone push meanwhile?" >&2`,
     '  exit 1',
     'fi',
+    ...(settings.submodules
+      ? [
+          'if [[ -f .gitmodules ]]; then',
+          '  git submodule sync --recursive',
+          '  git submodule update --init --recursive',
+          'fi',
+        ]
+      : []),
   ]
 }
 
@@ -263,7 +288,7 @@ export function buildRemoteScript(settings, options, sha) {
     '  exit 1',
     'fi',
     ...backupLines(settings, options, sha),
-    ...updateLines(sha),
+    ...updateLines(settings, sha),
     ...startLines(settings, sha),
     ...siteLines(settings, options),
     ...(options.skipPrune
