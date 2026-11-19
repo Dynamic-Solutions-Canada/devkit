@@ -16,7 +16,12 @@ import { fileURLToPath } from 'node:url'
 
 import { Resvg } from '@resvg/resvg-js'
 
-import { checkIcons, planIcons, writeIcons } from '../src/icons/index.mjs'
+import {
+  checkIcons,
+  loadRenderer,
+  planIcons,
+  writeIcons,
+} from '../src/icons/index.mjs'
 
 const devkitRoot = fileURLToPath(new URL('..', import.meta.url))
 const bin = path.join(devkitRoot, 'bin/devkit-icons.mjs')
@@ -280,4 +285,46 @@ test('devkit-icons --check fails before the icons exist and passes after devkit-
   assert.equal(run().status, 0)
   assert.equal(run('--check').status, 0)
   assert.ok(existsSync(path.join(root, 'public/apple-touch-icon.png')))
+})
+
+test('DEVKIT_ICONS_RENDERER_DIR loads the renderer from a tools folder or the package itself', (t) => {
+  const appRoot = repo(t, { renderer: false })
+  const realPackage = path.join(devkitRoot, 'node_modules/@resvg/resvg-js')
+
+  // A tools folder with its own node_modules, as winui-app-kit installs.
+  const tools = mkdtempSync(path.join(os.tmpdir(), 'devkit-icons-tools-'))
+  t.after(() => rmSync(tools, { recursive: true, force: true }))
+  mkdirSync(path.join(tools, 'node_modules/@resvg'), { recursive: true })
+  symlinkSync(realPackage, path.join(tools, 'node_modules/@resvg/resvg-js'))
+
+  assert.equal(
+    typeof loadRenderer(appRoot, { DEVKIT_ICONS_RENDERER_DIR: tools }),
+    'function',
+  )
+  assert.equal(
+    typeof loadRenderer(appRoot, { DEVKIT_ICONS_RENDERER_DIR: realPackage }),
+    'function',
+  )
+  assert.throws(
+    () => loadRenderer(appRoot, {}),
+    /set DEVKIT_ICONS_RENDERER_DIR/,
+  )
+  assert.throws(
+    () => loadRenderer(appRoot, { DEVKIT_ICONS_RENDERER_DIR: appRoot }),
+    /holds neither/,
+  )
+
+  // The whole command works from the tools folder in a repo with no node_modules.
+  const result = spawnSync(process.execPath, [bin, '--check'], {
+    cwd: appRoot,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, DEVKIT_ICONS_RENDERER_DIR: tools },
+  })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /do not match their masters/)
+})
+
+test('without the variable the renderer still comes from the repo', (t) => {
+  const appRoot = repo(t)
+  assert.equal(typeof loadRenderer(appRoot, {}), 'function')
 })

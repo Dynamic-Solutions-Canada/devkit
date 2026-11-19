@@ -273,7 +273,7 @@ Every run also writes `assets/generated/icon-256.png` and `icon-512.png` for the
 
 Android vectors need masters made only of `<path d fill>` elements, the shape outlined art usually takes; anything else (groups, transforms, gradients, strokes, other shapes) is refused with the element that stopped it.
 
-Rendering uses `@resvg/resvg-js`, which devkit does not install: add it to the repo as an exact dev dependency. The check compares bytes, so every machine must render with the same version.
+Rendering uses `@resvg/resvg-js`, which devkit does not install: add it to the repo as an exact dev dependency. A repo with no `node_modules` of its own (the Windows repos, through winui-app-kit's tools folder) sets `DEVKIT_ICONS_RENDERER_DIR` to a folder containing `node_modules/@resvg/resvg-js`, or to the package folder itself, and the renderer loads from there instead. The check compares bytes, so every machine must render with the same version.
 
 ### Refusing secrets and oversized files at commit time
 

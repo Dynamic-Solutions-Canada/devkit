@@ -81,16 +81,35 @@ function loadMasters(root) {
   return masters
 }
 
-/** Loads resvg from the repo, so devkit itself never carries the native module. */
-function loadRenderer(root) {
+/**
+ * Loads resvg, so devkit itself never carries the native module.
+ *
+ * By default it comes from the repo being generated. `DEVKIT_ICONS_RENDERER_DIR` names another
+ * place instead, for repos with no `node_modules` of their own (the Windows repos run this from
+ * winui-app-kit's tools folder): either a folder containing `node_modules/@resvg/resvg-js`, or
+ * the package folder itself.
+ */
+export function loadRenderer(root, env = process.env) {
+  const rendererDir = env.DEVKIT_ICONS_RENDERER_DIR?.trim()
+  const from = rendererDir ? path.resolve(rendererDir) : root
+  const require = createRequire(path.join(from, 'package.json'))
+
   try {
-    return createRequire(path.join(root, 'package.json'))('@resvg/resvg-js')
-      .Resvg
+    if (rendererDir && isRendererPackage(from)) return require(from).Resvg
+    return require('@resvg/resvg-js').Resvg
   } catch {
-    throw new Error(
-      'devkit-icons: install @resvg/resvg-js in this repo (pinned exactly) to render icons',
-    )
+    const where = rendererDir
+      ? `DEVKIT_ICONS_RENDERER_DIR (${from}) holds neither node_modules/@resvg/resvg-js nor the package itself`
+      : 'install @resvg/resvg-js in this repo (pinned exactly), or set DEVKIT_ICONS_RENDERER_DIR'
+    throw new Error(`devkit-icons: ${where}`)
   }
+}
+
+/** True when `dir` is the `@resvg/resvg-js` package folder itself. */
+function isRendererPackage(dir) {
+  const manifest = path.join(dir, 'package.json')
+  if (!existsSync(manifest)) return false
+  return JSON.parse(readFileSync(manifest, 'utf8')).name === '@resvg/resvg-js'
 }
 
 /** Every output the repo's config asks for, generated exports first. */
