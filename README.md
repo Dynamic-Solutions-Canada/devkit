@@ -255,6 +255,27 @@ Android vectors need masters made only of `<path d fill>` elements, the shape ou
 
 Rendering uses `@resvg/resvg-js`, which devkit does not install: add it to the repo as an exact dev dependency. The check compares bytes, so every machine must render with the same version.
 
+### Refusing secrets and oversized files at commit time
+
+`devkit-precommit` is the shared pre-commit check. It refuses staged:
+
+- signing material and keys: `*.pfx`, `*.p12`, `*.jks`, `*.der`, `*.cer`, `*.keystore`;
+- environment files: `.env` and `.env.*`, except names ending in `.example`;
+- anything under a `.secrets/` folder;
+- text containing a PEM private key, wherever it was pasted;
+- files over the size limit, 5 MB unless set.
+
+It checks what is staged, not the working tree: names from the index, sizes and contents from the staged blobs. Deleted files are ignored, a rename is checked at its new path, and submodule pointers are skipped. It lists every problem and fails the commit. Run it from `lefthook.yml`, with the repo's policy on the run line:
+
+```yaml
+pre-commit:
+  commands:
+    forbidden-files:
+      run: npx devkit-precommit --allow android/app/debug.keystore --max-size 5MB
+```
+
+`--allow <path>` (repeatable, an exact repo-relative path) lets one file through every check, such as the debug keystore Android builds share. `--allow-large <path>` exempts one file from the size limit only. `git commit --no-verify` still skips the hook, so the check stays fast and is a guard, not a wall. Like the other `devkit-*` commands it needs no bootstrapped machine.
+
 ### Running tests
 
 `devkit-test` finds and runs every `node --test` file in the app, so a test added in a new folder runs without editing a script. Point the app's `test` script at it:
@@ -318,6 +339,7 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 | `devkit-init [--check]`                                          | write or check the generated dev files; see [Generated dev files](#generated-dev-files)                                                                |
 | `devkit-wait-for-db`                                             | wait until `DATABASE_URL` accepts connections; see [Waiting for the database](#waiting-for-the-database-and-the-vite-server-block)                     |
 | `devkit-icons [--check]`                                         | write or check every icon size from the SVG masters; see [Icons](#icons)                                                                               |
+| `devkit-precommit [--allow <path>] [--max-size <n>]`             | refuse staged secrets, keys and oversized files; see [Refusing secrets](#refusing-secrets-and-oversized-files-at-commit-time)                          |
 
 `devkit` with no command prints the full option list.
 

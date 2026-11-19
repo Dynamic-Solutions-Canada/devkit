@@ -24,6 +24,7 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 | Generated dev and deploy files for apps (`devkit-init`)     | `src/app-templates.mjs`, `templates/`, `bin/devkit-init.mjs`                                |
 | Database wait and Vite server helpers for apps              | `src/database-wait.mjs`, `bin/devkit-wait-for-db.mjs`, `src/vite.mjs` (the `./vite` export) |
 | Icon generator for apps (`devkit-icons`)                    | `src/icons/`, `bin/devkit-icons.mjs`                                                        |
+| Pre-commit check for apps (`devkit-precommit`)              | `src/precommit.mjs`, `bin/devkit-precommit.mjs`                                             |
 | VS Code browser bridge                                      | `vscode-extension/`, built by `scripts/build-browser-extension.mjs`                         |
 
 ## Conventions and gotchas
@@ -36,6 +37,7 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 - `templates/run-dev.mjs`, `templates/deploy-over-ssh.mjs` and `templates/generated-file-guard.mjs` are copied verbatim into every app and checked there by `devkit-init --check`, so any change to them, even whitespace, makes every app regenerate on its next pin bump. Change it only for a reason apps need, and say so in the release notes.
 - `templates/deploy-over-ssh.mjs` runs during a deploy, so it must never import devkit (D-045). Its tests run the server script against fake `git` and `docker`, never a real server.
 - `src/vite.mjs` is loaded by apps' `vite.config` during production builds, so it must stay import-free and side-effect free.
+- Tests that need a private key build its PEM marker at run time, so no tracked file holds one for a scanner, or `devkit-precommit`, to refuse.
 - The README is the canonical usage doc that apps link to; change behaviour and its README section together.
 
 ## Commands
