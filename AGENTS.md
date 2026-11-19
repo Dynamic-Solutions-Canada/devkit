@@ -23,6 +23,7 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 | Test discovery for apps (`devkit-test`)                     | `src/test-runner.mjs`, `bin/devkit-test.mjs`                                                |
 | Generated dev and deploy files for apps (`devkit-init`)     | `src/app-templates.mjs`, `templates/`, `bin/devkit-init.mjs`                                |
 | Database wait and Vite server helpers for apps              | `src/database-wait.mjs`, `bin/devkit-wait-for-db.mjs`, `src/vite.mjs` (the `./vite` export) |
+| Icon generator for apps (`devkit-icons`)                    | `src/icons/`, `bin/devkit-icons.mjs`                                                        |
 | VS Code browser bridge                                      | `vscode-extension/`, built by `scripts/build-browser-extension.mjs`                         |
 
 ## Conventions and gotchas

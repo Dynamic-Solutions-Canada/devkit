@@ -218,6 +218,43 @@ export default defineConfig(({ mode }) => {
 
 Vite loads its config for production builds too, so this module has no imports and no side effects, and its options only matter to `vite dev`. A build still needs devkit installed, which it already is wherever the app's dev dependencies are.
 
+### Icons
+
+`devkit-icons` sizes and packs a repo's SVG masters into every icon its platforms need, and `devkit-icons --check` (for `validate`) fails when a committed icon no longer matches its master. It draws nothing: the art is the masters in `assets/brand/`:
+
+| Master              | Needed for                                                                                          |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| `icon.svg`          | everything; text converted to outlines                                                              |
+| `icon-maskable.svg` | web (`purpose: maskable`, art inside the central 80%)                                               |
+| `icon-mono.svg`     | Windows (its light-taskbar form is this drawn dark) and Android (monochrome and notification icons) |
+
+`assets/brand/icons.json` names the repo's targets and where their files go:
+
+```json
+{
+  "background": "#17181D",
+  "targets": {
+    "web": { "dir": "apps/web/public" },
+    "windows": {
+      "images": "AppMSIX/Images",
+      "ico": "App/Resources/App.ico",
+      "tiles": false
+    },
+    "android": {
+      "res": "android/app/src/main/res",
+      "legacy": false,
+      "play": true
+    }
+  }
+}
+```
+
+Every run also writes `assets/generated/icon-256.png` and `icon-512.png` for the README, website and promo catalog. The web target writes `icon.svg`, `icon-192.png`, `icon-512.png`, `maskable-icon-192.png`, `maskable-icon-512.png` and an opaque `apple-touch-icon.png`. The Windows target writes the MSIX logos at every scale, the `Square44x44Logo` target sizes in their plain, unplated and light-unplated forms, the `.ico` with all fifteen frames, and the 256 px `.png` beside it. All of them are transparent, because Windows draws its own plate. The Android target writes the adaptive vector icon, its monochrome layer and the notification icon, plus legacy launcher PNGs when `legacy` is true and the 512 px Play icon when `play` is true. `background` fills the opaque icons and the Android background layer.
+
+Android vectors need masters made only of `<path d fill>` elements, the shape outlined art usually takes; anything else (groups, transforms, gradients, strokes, other shapes) is refused with the element that stopped it.
+
+Rendering uses `@resvg/resvg-js`, which devkit does not install: add it to the repo as an exact dev dependency. The check compares bytes, so every machine must render with the same version.
+
 ### Running tests
 
 `devkit-test` finds and runs every `node --test` file in the app, so a test added in a new folder runs without editing a script. Point the app's `test` script at it:
@@ -280,6 +317,7 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 | `devkit-test [--integration] [paths...]`                         | run the app's `node --test` files, or only its database tests; see [Running tests](#running-tests)                                                     |
 | `devkit-init [--check]`                                          | write or check the generated dev files; see [Generated dev files](#generated-dev-files)                                                                |
 | `devkit-wait-for-db`                                             | wait until `DATABASE_URL` accepts connections; see [Waiting for the database](#waiting-for-the-database-and-the-vite-server-block)                     |
+| `devkit-icons [--check]`                                         | write or check every icon size from the SVG masters; see [Icons](#icons)                                                                               |
 
 `devkit` with no command prints the full option list.
 
