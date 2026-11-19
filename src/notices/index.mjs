@@ -74,6 +74,23 @@ function licenceProblems(packages, allow = []) {
 }
 
 /**
+ * Narrows the deliverables to the outputs named by `--only`, keeping config order. An empty list
+ * keeps them all. A name that matches no deliverable's `output` throws, so a typo cannot skip a
+ * check silently.
+ */
+export function selectDeliverables(notices, only = []) {
+  if (only.length === 0) return notices
+  const outputs = notices.map((deliverable) => deliverable.output)
+  const unknown = only.filter((output) => !outputs.includes(output))
+  if (unknown.length > 0) {
+    throw new Error(
+      `devkit-notices: --only ${unknown.join(', ')} matches no deliverable's output; outputs are ${outputs.join(', ')}`,
+    )
+  }
+  return notices.filter((deliverable) => only.includes(deliverable.output))
+}
+
+/**
  * Builds every deliverable in memory as `{ output, text, count }`. Throws one error listing every
  * licence problem across them, so a run never writes a partial set.
  */

@@ -299,6 +299,8 @@ export default {
 
 Both commands fail on a package that declares no licence and ships no licence file, and on one that declares `UNLICENSED`. A private package the app may ship goes in that deliverable's `allow` list (`allow: ['@vendor/sdk']`); a name in `allow` that is no longer in the deliverable's dependencies fails too, so the list cannot go stale.
 
+`--only <output>` (repeatable, with or without `--check`) processes just the deliverables with that `output`, for a CI job that installs only some of them or runs on another platform; an output that matches no deliverable fails.
+
 Linux x64 is the canonical platform. Packages that exist for one platform only, such as `@esbuild/linux-x64` or `@rollup/rollup-linux-x64-gnu`, appear as they are installed there, so run `--check` on Linux x64, as WSL, CI and the production images do; another platform reports drift. A deliverable built for several architectures, such as an arm64 build beside the x64 one, takes its notices from the x64 closure: the arm64 build differs only in its native binary packages, and the app says so in its own docs.
 
 Commit the files and check them in `validate`, or generate them in the build instead (`"build": "devkit-notices && vite build"`) and git-ignore them. A Docker build that runs it needs `devkit.config.mjs` copied in and devkit installed, which `npm ci` does when dev dependencies are installed. Hand-written credits for software that is not an npm package stay in the app.

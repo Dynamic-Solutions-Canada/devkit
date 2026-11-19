@@ -342,3 +342,47 @@ test('devkit-notices writes from devkit.config.mjs and --check fails on drift', 
   )
   assert.equal(run('--check').status, 0)
 })
+
+test('--only processes just the named deliverables and refuses an unknown output', (t) => {
+  const { root } = repo(t)
+  const dep = installed(root, 'node_modules/dep', {
+    name: 'dep',
+    version: '1.0.0',
+    license: 'MIT',
+  })
+  // The Linux deliverable's closure is not installed, as in a CI job that installs only the root.
+  write(root, 'npm-ls.json', JSON.stringify({ 'apps/web': [dep] }))
+  const linux = {
+    title: 'Linux app',
+    packages: ['apps/linux'],
+    output: 'apps/linux/NOTICES.txt',
+  }
+  write(
+    root,
+    'devkit.config.mjs',
+    `export default { notices: ${JSON.stringify([webDeliverable, linux])} }`,
+  )
+  const run = (...args) =>
+    spawnSync(process.execPath, [bin, ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${path.join(root, '.bin')}:${process.env.PATH}`,
+      },
+    })
+
+  assert.equal(run().status, 1, 'all deliverables need the Linux closure')
+  const only = ['--only', webDeliverable.output]
+  assert.equal(run(...only).status, 0)
+  assert.equal(run('--check', ...only).status, 0)
+
+  const unknown = run('--check', '--only', 'apps/nope.txt')
+  assert.equal(unknown.status, 1)
+  assert.match(
+    unknown.stderr,
+    /--only apps\/nope\.txt matches no deliverable's output/,
+  )
+  assert.match(run('--only').stderr, /--only needs an output path/)
+  assert.match(run('--chek').stderr, /unknown argument --chek/)
+})
