@@ -60,16 +60,30 @@ export function databaseExists(config, name, project) {
 }
 
 /**
- * Ensures this checkout's database exists, cloning the baseline when it does not.
+ * Ensures this checkout's database exists, cloning the baseline when it does not. `empty` skips
+ * the baseline and creates it empty (`--fresh`).
  *
  * Returns what happened so the caller can report it, and `sourced: 'empty'` when there was no
  * baseline to clone. An empty database is a working outcome, not a failure: the migration bootstrap
  * builds the schema and the developer can seed it. It is just not a useful one, so the caller says
  * how to fix it.
  */
-export function ensureCheckoutDatabase(config, identity, project) {
+export function ensureCheckoutDatabase(
+  config,
+  identity,
+  project,
+  { empty = false } = {},
+) {
   const name = identity.databaseName
   if (databaseExists(config, name, project)) return { created: false, name }
+  if (empty) {
+    return {
+      created: true,
+      name,
+      sourced: 'empty',
+      ...createEmpty(config, name, project),
+    }
+  }
 
   return databaseEngine(project) === 'mariadb'
     ? ensureMariaDatabase(config, identity, project)

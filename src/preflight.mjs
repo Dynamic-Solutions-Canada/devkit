@@ -43,6 +43,7 @@ import {
   appliedMigrationCount,
   databaseBaselineAgeDays,
   databaseBaselineLabel,
+  dropDatabase,
   ensureCheckoutDatabase,
   resolveDatabaseIdentity,
   snapshotBaseline,
@@ -100,6 +101,8 @@ export class PreflightError extends Error {
  * DEVKIT_OPEN_BROWSER explicitly requests a tab. False suppresses opening for this call.
  * `background` (or --background) re-executes the runner detached and exits the invoking process
  * after child preflight succeeds. Each enabled checkout permits only one runner at a time.
+ * `fresh` (or --fresh, or DEVKIT_FRESH=1) drops this checkout's database and recreates it empty,
+ * so the app's own migrations and seed rebuild it; the primary checkout refuses it.
  */
 export async function preflight({
   repoRoot,
@@ -108,6 +111,7 @@ export async function preflight({
   teardown = process.argv.includes('--down'),
   openBrowser,
   background = process.argv.includes('--background'),
+  fresh = process.argv.includes('--fresh') || process.env.DEVKIT_FRESH === '1',
 }) {
   const hostConfig = devkitConfig()
   if (!hostConfig) return null
@@ -116,6 +120,7 @@ export async function preflight({
   if (!checkout) return null
 
   assertProjectRuntime(repoRoot)
+  if (fresh && !teardown) assertFreshAllowed(checkout)
   const backgroundChild = isBackgroundChild()
   if (teardown && background) {
     throw new PreflightError('--background cannot be combined with teardown')
@@ -139,6 +144,7 @@ export async function preflight({
       checkDependencies,
       teardown,
       openBrowser,
+      fresh,
     })
     result.runner = runner
     if (backgroundChild) reportBackgroundReady()
@@ -146,6 +152,41 @@ export async function preflight({
   } catch (error) {
     runner.release()
     throw error
+  }
+}
+
+/**
+ * Refuses a fresh database in the primary checkout, as `devkit reset` does. That database holds
+ * the real dev data baselines are captured from, and devkit must not become a way for an agent to
+ * wipe what a migration tool's own consent check (Prisma 7) would have stopped.
+ */
+export function assertFreshAllowed(checkout) {
+  if (!checkout.isPrimary) return
+  throw new PreflightError(
+    'refusing --fresh in the primary checkout: its database is the real dev data baselines are captured from',
+    "use a worktree for a fresh database, or reset the primary database yourself with your app's own tooling, for example `prisma migrate reset`",
+  )
+}
+
+/** The startup line saying where a newly created database came from. */
+function provisionedLine(config, identity, project, provisioned, fresh) {
+  const name = provisioned.name
+  if (fresh) return `database ${name} recreated EMPTY for --fresh`
+  if (provisioned.sourced === 'baseline') {
+    const source =
+      provisioned.baseline ?? databaseBaselineLabel(config, identity, project)
+    return `database ${name} cloned from ${source}`
+  }
+  return `database ${name} created EMPTY (no baseline yet -- run \`devkit snapshot\` from the primary checkout)`
+}
+
+/** Drops this worktree's database for `fresh`, so it is recreated empty rather than cloned. */
+function dropForFresh(config, identity, project) {
+  const dropped = dropDatabase(config, identity.databaseName, project)
+  if (!dropped.ok) {
+    throw new PreflightError(
+      `could not drop ${identity.databaseName} for --fresh: ${dropped.error}`,
+    )
   }
 }
 
@@ -158,6 +199,7 @@ async function prepareDevState({
   checkDependencies,
   teardown,
   openBrowser,
+  fresh,
 }) {
   // Preserve Devkit's off switch and keep teardown independent of opening requests.
   const browserTarget = teardown
@@ -219,17 +261,16 @@ async function prepareDevState({
     }
     waitForDatabase(config, project)
 
-    const provisioned = ensureCheckoutDatabase(config, identity, project)
+    if (fresh) dropForFresh(config, identity, project)
+    const provisioned = ensureCheckoutDatabase(config, identity, project, {
+      empty: fresh,
+    })
     if (provisioned.error)
       throw new PreflightError(
         `could not create database ${provisioned.name}: ${provisioned.error}`,
       )
     if (provisioned.created) {
-      lines.push(
-        provisioned.sourced === 'baseline'
-          ? `database ${provisioned.name} cloned from ${provisioned.baseline ?? databaseBaselineLabel(config, identity, project)}`
-          : `database ${provisioned.name} created EMPTY (no baseline yet -- run \`devkit snapshot\` from the primary checkout)`,
-      )
+      lines.push(provisionedLine(config, identity, project, provisioned, fresh))
       if (provisioned.warning)
         lines.push(
           `baseline clone failed, fell back to empty: ${provisioned.warning}`,

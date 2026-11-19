@@ -32,6 +32,22 @@ const WINDOWS_TILES = {
 /** The light-taskbar form is the monochrome master drawn dark (ASSET-5). */
 const LIGHT_TASKBAR_COLOR = '#1F1F1F'
 
+/** Where the 512 px Play icon goes unless `playPath` says otherwise: beside, not among, the screenshots. */
+export const DEFAULT_PLAY_PATH = 'store-assets/play/graphics/icon.png'
+
+/** The Play icon's path before 0.21.0, now listed as superseded when it lingers. */
+export const OLD_PLAY_PATH = 'store-assets/play/icon.png'
+
+/** Resource names the Android target owns; a same-named file anywhere else in `res/` shadows ours. */
+export const ANDROID_RESOURCE_NAMES = [
+  'ic_launcher',
+  'ic_launcher_round',
+  'ic_launcher_foreground',
+  'ic_launcher_background',
+  'ic_launcher_monochrome',
+  'ic_stat',
+]
+
 const ANDROID_LEGACY = {
   mdpi: 48,
   hdpi: 72,
@@ -58,6 +74,16 @@ function need(masters, name, target) {
   return masters[name]
 }
 
+/**
+ * The master for one opaque output that a repo may draw from either master: `"icon"` (the
+ * default) or `"maskable"`, whose full-bleed art suits a surface that crops its own corners.
+ * The output still sits on `background`, so it stays opaque either way.
+ */
+function chosenMaster(masters, choice, target) {
+  if (choice === 'maskable') return need(masters, 'icon-maskable.svg', target)
+  return masters['icon.svg']
+}
+
 /** ASSET-1: the small exports every surface (README, website, promo catalog) links to. */
 export function generatedOutputs(masters) {
   return [256, 512].map((px) => ({
@@ -67,9 +93,14 @@ export function generatedOutputs(masters) {
 }
 
 /** ASSET-7: favicon, manifest icons in both purposes, and the opaque iOS icon. */
-export function webOutputs(masters, { dir }, { background }) {
+export function webOutputs(
+  masters,
+  { dir, appleTouchMaster = 'icon' },
+  { background },
+) {
   const icon = masters['icon.svg']
   const maskable = need(masters, 'icon-maskable.svg', 'web')
+  const appleTouch = chosenMaster(masters, appleTouchMaster, 'web')
   return [
     {
       path: path.posix.join(dir, 'icon.svg'),
@@ -85,7 +116,7 @@ export function webOutputs(masters, { dir }, { background }) {
     })),
     {
       path: path.posix.join(dir, 'apple-touch-icon.png'),
-      svg: sized(icon, 180, 180, { background }),
+      svg: sized(appleTouch, 180, 180, { background }),
     },
   ]
 }
@@ -178,7 +209,13 @@ const ADAPTIVE_ICON = `<?xml version="1.0" encoding="utf-8"?>
 /** ASSET-6: adaptive vector icon, notification icon, optional legacy rasters, and the Play icon. */
 export function androidOutputs(
   masters,
-  { res, legacy = false, play = true },
+  {
+    res,
+    legacy = false,
+    play = true,
+    playPath = DEFAULT_PLAY_PATH,
+    playMaster = 'icon',
+  },
   { background },
 ) {
   const icon = masters['icon.svg']
@@ -235,8 +272,13 @@ export function androidOutputs(
   }
   if (play) {
     outputs.push({
-      path: 'store-assets/play/icon.png',
-      svg: sized(icon, 512, 512, { background }),
+      path: playPath,
+      svg: sized(
+        chosenMaster(masters, playMaster, 'android Play icon'),
+        512,
+        512,
+        { background },
+      ),
     })
   }
   return outputs

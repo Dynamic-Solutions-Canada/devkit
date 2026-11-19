@@ -124,7 +124,7 @@ Preflight reads these arguments from its own process. Runners that consume argum
 | `scripts/hooks/generated-file-guard.mjs` | The whole file, and its one `PreToolUse` registration in `.claude/settings.json`. See [Guarding generated files](#guarding-generated-files).                                                                                       |
 | `compose.dev.yml`                        | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
 
-The runner is the same in every app. On the host it does what [The dev runner](#the-dev-runner) shows; inside the container it runs the app's own `dev:container` npm script, which prepares the database and starts the dev servers (it sees `DEVKIT_FRESH=1` after `npm run dev -- --fresh`). Stop signals reach that script. `devkit-init` warns when `dev:container` is missing.
+The runner is the same in every app. On the host it does what [The dev runner](#the-dev-runner) shows; inside the container it runs the app's own `dev:container` npm script, which prepares the database and starts the dev servers (it sees `DEVKIT_FRESH=1` after `npm run dev -- --fresh`). With `--fresh`, preflight first drops this worktree's database and recreates it empty, without the baseline, so `dev:container` rebuilds it with the app's own migrations (`prisma migrate deploy`, not `db push --force-reset` or `migrate reset`, which Prisma 7 refuses from an AI agent) and its seed. `--fresh` refuses the primary checkout, as `devkit reset` does, because its database is the real dev data baselines come from; reset that one yourself with the app's own tooling, for example `prisma migrate reset`. A runner that consumes arguments in another process forwards the choice as `preflight({ repoRoot, fresh: true })`, and `DEVKIT_FRESH=1` also requests it. Stop signals reach that script. `devkit-init` warns when `dev:container` is missing.
 
 The same pattern covers worktree setup: the owned `dev:prepare-worktree` runs `devkit prepare` and then the app's `dev:postprepare` script if it has one, for steps such as generating a database client or building a shared package. Put app steps there rather than editing `dev:prepare-worktree`.
 
@@ -254,7 +254,7 @@ Vite loads its config for production builds too, so this module has no imports a
 {
   "background": "#17181D",
   "targets": {
-    "web": { "dir": "apps/web/public" },
+    "web": { "dir": "apps/web/public", "appleTouchMaster": "icon" },
     "windows": {
       "images": "AppMSIX/Images",
       "ico": "App/Resources/App.ico",
@@ -263,13 +263,17 @@ Vite loads its config for production builds too, so this module has no imports a
     "android": {
       "res": "android/app/src/main/res",
       "legacy": false,
-      "play": true
+      "play": true,
+      "playPath": "store-assets/play/graphics/icon.png",
+      "playMaster": "icon"
     }
   }
 }
 ```
 
-Every run also writes `assets/generated/icon-256.png` and `icon-512.png` for the README, website and promo catalog. The web target writes `icon.svg`, `icon-192.png`, `icon-512.png`, `maskable-icon-192.png`, `maskable-icon-512.png` and an opaque `apple-touch-icon.png`. The Windows target writes the MSIX logos at every scale, the `Square44x44Logo` target sizes in their plain, unplated and light-unplated forms, the `.ico` with all fifteen frames, and the 256 px `.png` beside it. All of them are transparent, because Windows draws its own plate. The Android target writes the adaptive vector icon, its monochrome layer and the notification icon, plus legacy launcher PNGs when `legacy` is true and the 512 px Play icon when `play` is true. `background` fills the opaque icons and the Android background layer.
+Every run also writes `assets/generated/icon-256.png` and `icon-512.png` for the README, website and promo catalog. The web target writes `icon.svg`, `icon-192.png`, `icon-512.png`, `maskable-icon-192.png`, `maskable-icon-512.png` and an opaque `apple-touch-icon.png`. The Windows target writes the MSIX logos at every scale, the `Square44x44Logo` target sizes in their plain, unplated and light-unplated forms, the `.ico` with all fifteen frames, and the 256 px `.png` beside it. All of them are transparent, because Windows draws its own plate. The Android target writes the adaptive vector icon, its monochrome layer and the notification icon, plus legacy launcher PNGs when `legacy` is true and the 512 px Play icon when `play` is true. The Play icon goes to `playPath`, `store-assets/play/graphics/icon.png` by default, so it never sits among the phone screenshots in `store-assets/play/`. `background` fills the opaque icons and the Android background layer. `appleTouchMaster` and `playMaster` choose the master for the iPhone and Play icons: `"icon"` by default, or `"maskable"` for full-bleed art on a surface that rounds its own corners. Either way the icon stays opaque on `background`, and `"maskable"` needs `icon-maskable.svg` even without the web target.
+
+Android picks a resource by name from the most specific folder, so a same-named icon elsewhere in `res/` wins over the generated one. Capacitor's template ships `drawable-v24/ic_launcher_foreground.xml`, which beats the generated `drawable/ic_launcher_foreground.xml` on every device when `minSdk` is 24 or higher, plus `mipmap-*/ic_launcher_foreground.png` files. With `legacy` off, its `mipmap-*/ic_launcher.png` launcher PNGs still show on Android 7. When the Android target is configured, `devkit-icons` names every `drawable-*` or `mipmap-*` file called `ic_launcher`, `ic_launcher_round`, `ic_launcher_foreground`, `ic_launcher_background`, `ic_launcher_monochrome` or `ic_stat` that it did not write, plus a Play icon left at the old `store-assets/play/icon.png`. `--check` fails until they are gone. It never deletes them itself: remove the listed files with `git rm`. When `minSdk` is below 26, set `legacy` to true rather than deleting the launcher PNGs, because Android 7 has no other launcher icon to fall back to. The check reads only the configured `res` folder. When `res` is an overlay that a setup script copies into a generated, untracked Android project (one `npx cap add android` recreates), the check cannot see that project, and every regeneration brings the template's files back. That setup script must delete them after each copy: `drawable-v24/ic_launcher_foreground.xml`, every `mipmap-*/ic_launcher_foreground.png`, and, when `legacy` is false, every `mipmap-*/ic_launcher.png` and `mipmap-*/ic_launcher_round.png` that the overlay did not replace.
 
 Android vectors need masters made only of `<path d fill>` elements, the shape outlined art usually takes; anything else (groups, transforms, gradients, strokes, other shapes) is refused with the element that stopped it.
 

@@ -20,6 +20,7 @@ import {
   checkIcons,
   loadRenderer,
   planIcons,
+  supersededIcons,
   writeIcons,
 } from '../src/icons/index.mjs'
 
@@ -104,7 +105,7 @@ test('every target writes the size tables from the masters', (t) => {
     ],
     'App/Resources/App.png': [256, 256],
     'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png': [192, 192],
-    'store-assets/play/icon.png': [512, 512],
+    'store-assets/play/graphics/icon.png': [512, 512],
   }
   for (const [file, size] of Object.entries(sizes)) {
     assert.ok(written.includes(file), file)
@@ -327,4 +328,133 @@ test('DEVKIT_ICONS_RENDERER_DIR loads the renderer from a tools folder or the pa
 test('without the variable the renderer still comes from the repo', (t) => {
   const appRoot = repo(t)
   assert.equal(typeof loadRenderer(appRoot, {}), 'function')
+})
+
+/** Writes `contents` at a repo-relative path, creating its folder. */
+function put(root, file, contents = 'x') {
+  mkdirSync(path.dirname(path.join(root, file)), { recursive: true })
+  writeFileSync(path.join(root, file), contents)
+}
+
+test('the Play icon goes to graphics/ by default and to playPath when set', (t) => {
+  const paths = (android) =>
+    planIcons(
+      repo(t, { config: { background: '#000000', targets: { android } } }),
+    ).map((output) => output.path)
+
+  assert.ok(
+    paths({ res: 'res' }).includes('store-assets/play/graphics/icon.png'),
+  )
+  assert.ok(
+    paths({ res: 'res', playPath: 'play/hi-res.png' }).includes(
+      'play/hi-res.png',
+    ),
+  )
+  assert.throws(
+    () => paths({ res: 'res', playPath: 3 }),
+    /targets\.android\.playPath must be a path/,
+  )
+})
+
+test('supersededIcons names same-named Android icons devkit did not write, and the old Play icon', (t) => {
+  const root = repo(t, {
+    config: { background: '#000000', targets: { android: { res: 'res' } } },
+  })
+  writeIcons(root)
+  assert.deepEqual(supersededIcons(root), [])
+
+  // Capacitor's template files, an unrelated resource, and the pre-0.21.0 Play icon.
+  put(root, 'res/drawable-v24/ic_launcher_foreground.xml')
+  put(root, 'res/mipmap-hdpi/ic_launcher_foreground.png')
+  put(root, 'res/mipmap-hdpi/ic_launcher.png')
+  put(root, 'res/drawable/splash.png')
+  put(root, 'res/values/ic_launcher_background.xml')
+  put(root, 'store-assets/play/icon.png')
+
+  assert.deepEqual(supersededIcons(root), [
+    'res/drawable-v24/ic_launcher_foreground.xml',
+    'res/mipmap-hdpi/ic_launcher.png',
+    'res/mipmap-hdpi/ic_launcher_foreground.png',
+    'store-assets/play/icon.png',
+  ])
+})
+
+test('supersededIcons keeps legacy PNGs devkit writes and an old Play path still in use', (t) => {
+  const root = repo(t, {
+    config: {
+      background: '#000000',
+      targets: {
+        android: {
+          res: 'res',
+          legacy: true,
+          playPath: 'store-assets/play/icon.png',
+        },
+      },
+    },
+  })
+  writeIcons(root)
+  assert.deepEqual(supersededIcons(root), [])
+})
+
+test('devkit-icons names superseded files, and --check fails on them', (t) => {
+  const root = repo(t, {
+    config: { background: '#000000', targets: { android: { res: 'res' } } },
+  })
+  const run = (...args) =>
+    spawnSync(process.execPath, [bin, ...args], { cwd: root, encoding: 'utf8' })
+  put(root, 'res/drawable-v24/ic_launcher_foreground.xml')
+
+  const written = run()
+  assert.equal(written.status, 0)
+  assert.match(written.stderr, /res\/drawable-v24\/ic_launcher_foreground\.xml/)
+  assert.ok(
+    existsSync(path.join(root, 'res/drawable-v24/ic_launcher_foreground.xml')),
+  )
+
+  const checked = run('--check')
+  assert.equal(checked.status, 1)
+  assert.match(checked.stderr, /remove these files/)
+
+  rmSync(path.join(root, 'res/drawable-v24'), { recursive: true })
+  assert.equal(run('--check').status, 0)
+})
+
+test('appleTouchMaster and playMaster draw those icons from the maskable master', (t) => {
+  /** Renders one planned output to raw pixels. */
+  const pixels = (root, file) => {
+    const output = planIcons(root).find((planned) => planned.path === file)
+    return Buffer.from(new Resvg(output.svg).render().pixels)
+  }
+  const make = (web, android) =>
+    repo(t, {
+      config: { background: '#17181D', targets: { web, android } },
+    })
+  const plain = make({ dir: 'p' }, { res: 'res' })
+  const maskable = make(
+    { dir: 'p', appleTouchMaster: 'maskable' },
+    { res: 'res', playMaster: 'maskable' },
+  )
+
+  for (const file of [
+    'p/apple-touch-icon.png',
+    'store-assets/play/graphics/icon.png',
+  ]) {
+    assert.notDeepEqual(pixels(plain, file), pixels(maskable, file), file)
+  }
+  assert.throws(
+    () =>
+      planIcons(make({ dir: 'p', appleTouchMaster: 'mask' }, { res: 'res' })),
+    /targets\.web\.appleTouchMaster must be "icon" or "maskable"/,
+  )
+  const noMaskable = repo(t, {
+    config: {
+      background: '#17181D',
+      targets: { android: { res: 'res', playMaster: 'maskable' } },
+    },
+    masters: { 'icon.svg': ICON, 'icon-mono.svg': MONO },
+  })
+  assert.throws(
+    () => planIcons(noMaskable),
+    /needs assets\/brand\/icon-maskable\.svg/,
+  )
 })

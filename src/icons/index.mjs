@@ -13,6 +13,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import { packIco } from './ico.mjs'
+import { supersededFiles } from './superseded.mjs'
 import { parseMaster } from './svg.mjs'
 import {
   androidOutputs,
@@ -62,6 +63,21 @@ export function loadIconConfig(root) {
     )
     if (missing)
       throw new Error(`devkit-icons: targets.${name}.${missing} must be a path`)
+  }
+  for (const [name, key] of [
+    ['web', 'appleTouchMaster'],
+    ['android', 'playMaster'],
+  ]) {
+    const choice = targets[name]?.[key]
+    if (choice !== undefined && !['icon', 'maskable'].includes(choice)) {
+      throw new Error(
+        `devkit-icons: targets.${name}.${key} must be "icon" or "maskable"`,
+      )
+    }
+  }
+  const playPath = targets.android?.playPath
+  if (playPath !== undefined && typeof playPath !== 'string') {
+    throw new Error('devkit-icons: targets.android.playPath must be a path')
   }
   return { targets, background: config.background }
 }
@@ -159,4 +175,12 @@ export function checkIcons(root) {
       )
     })
     .map((output) => output.path)
+}
+
+/**
+ * Returns the committed files that would show instead of, or linger beside, the generated icons
+ * (see `superseded.mjs`). They are only named, never deleted.
+ */
+export function supersededIcons(root) {
+  return supersededFiles(root, loadIconConfig(root), planIcons(root))
 }
