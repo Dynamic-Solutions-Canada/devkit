@@ -458,3 +458,157 @@ test('appleTouchMaster and playMaster draw those icons from the maskable master'
     /needs assets\/brand\/icon-maskable\.svg/,
   )
 })
+
+test('two outputs on one path fail instead of overwriting each other', (t) => {
+  const root = repo(t, {
+    config: {
+      background: '#17181D',
+      targets: {
+        web: { dir: 'public' },
+        android: { res: 'res', playPath: 'public/icon-512.png' },
+      },
+    },
+  })
+  assert.throws(
+    () => planIcons(root),
+    /more than one output writes public\/icon-512\.png/,
+  )
+})
+
+/** Two Android apps sharing the masters, only the first with a Play icon, as phonelock has. */
+const TWO_APPS = {
+  background: '#17181D',
+  targets: {
+    android: [
+      { res: 'parent/res' },
+      { res: 'lock/res', play: false, legacy: true },
+    ],
+  },
+}
+
+test('the single-object Android target plans exactly what a one-entry list plans', (t) => {
+  const single = { res: 'res', legacy: true, playPath: 'play/icon.png' }
+  const plan = (android) =>
+    planIcons(
+      repo(t, { config: { background: '#000000', targets: { android } } }),
+    )
+  assert.deepEqual(plan([single]), plan(single))
+})
+
+test('a list of Android targets writes each app, with options per app', (t) => {
+  const root = repo(t, { config: TWO_APPS })
+  const paths = writeIcons(root)
+
+  for (const res of ['parent/res', 'lock/res']) {
+    assert.ok(paths.includes(`${res}/mipmap-anydpi-v26/ic_launcher.xml`))
+    assert.ok(paths.includes(`${res}/drawable/ic_stat.xml`))
+  }
+  assert.ok(!paths.some((file) => file.startsWith('parent/res/mipmap-hdpi')))
+  assert.ok(paths.includes('lock/res/mipmap-hdpi/ic_launcher.png'))
+  assert.equal(
+    paths.filter((file) => file === 'store-assets/play/graphics/icon.png')
+      .length,
+    1,
+  )
+  assert.deepEqual(checkIcons(root), [])
+})
+
+test('the check names a stale file in the second app', (t) => {
+  const root = repo(t, { config: TWO_APPS })
+  writeIcons(root)
+  writeFileSync(path.join(root, 'lock/res/drawable/ic_stat.xml'), 'changed')
+  assert.deepEqual(checkIcons(root), ['lock/res/drawable/ic_stat.xml'])
+})
+
+test('two Android apps on the default Play path fail instead of overwriting each other', (t) => {
+  const root = repo(t, {
+    config: {
+      background: '#17181D',
+      targets: { android: [{ res: 'parent/res' }, { res: 'lock/res' }] },
+    },
+  })
+  assert.throws(
+    () => planIcons(root),
+    /more than one output writes store-assets\/play\/graphics\/icon\.png/,
+  )
+})
+
+test('supersededIcons scans every Android app', (t) => {
+  const root = repo(t, { config: TWO_APPS })
+  writeIcons(root)
+  put(root, 'lock/res/drawable-v24/ic_launcher_foreground.xml')
+  assert.deepEqual(supersededIcons(root), [
+    'lock/res/drawable-v24/ic_launcher_foreground.xml',
+  ])
+})
+
+test('an entry can draw from its own masters while the exports keep the shared ones', (t) => {
+  const VARIANT =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#C0392B" d="M0 0H100V100H0Z"/></svg>'
+  const config = structuredClone(TWO_APPS)
+  config.targets.android[1].masters = {
+    icon: 'assets/brand/lock/icon.svg',
+    mono: 'assets/brand/lock/icon-mono.svg',
+  }
+  const root = repo(t, { config })
+  mkdirSync(path.join(root, 'assets/brand/lock'))
+  writeFileSync(path.join(root, 'assets/brand/lock/icon.svg'), VARIANT)
+  writeFileSync(path.join(root, 'assets/brand/lock/icon-mono.svg'), VARIANT)
+  writeIcons(root)
+
+  const foreground = (res) =>
+    readFileSync(
+      path.join(root, res, 'drawable/ic_launcher_foreground.xml'),
+      'utf8',
+    )
+  assert.match(foreground('lock/res'), /#C0392B/)
+  assert.doesNotMatch(foreground('parent/res'), /#C0392B/)
+  // The notification icon follows the variant mono master in the lock app only.
+  const stat = (res) =>
+    readFileSync(path.join(root, res, 'drawable/ic_stat.xml'), 'utf8')
+  assert.match(stat('parent/res'), /M30 20H70V80H30Z/)
+  assert.doesNotMatch(stat('lock/res'), /M30 20H70V80H30Z/)
+
+  // The shared exports are unchanged by a variant.
+  const shared = repo(t, { config: TWO_APPS })
+  writeIcons(shared)
+  for (const file of [
+    'assets/generated/icon-512.png',
+    'parent/res/drawable/ic_launcher_foreground.xml',
+  ]) {
+    assert.ok(
+      readFileSync(path.join(root, file)).equals(
+        readFileSync(path.join(shared, file)),
+      ),
+    )
+  }
+})
+
+test('a list target, its entries and master overrides are validated by position', (t) => {
+  const fails = (targets, pattern) =>
+    assert.throws(
+      () => planIcons(repo(t, { config: { background: '#000000', targets } })),
+      pattern,
+    )
+  fails({ android: [] }, /targets\.android must list at least one app/)
+  fails(
+    { web: [{ dir: 'public' }] },
+    /targets\.web must be an object; only targets\.android takes a list/,
+  )
+  fails(
+    { android: [{ res: 'a' }, { play: false }] },
+    /targets\.android\[1\]\.res must be a path/,
+  )
+  fails(
+    { android: [{ res: 'a' }, 'b'] },
+    /targets\.android\[1\] must be an object/,
+  )
+  fails(
+    { android: [{ res: 'a', masters: { logo: 'x.svg' } }] },
+    /targets\.android\[0\]\.masters\.logo is not a master; use icon, maskable, mono/,
+  )
+  fails(
+    { android: { res: 'a', masters: { icon: 'assets/brand/none.svg' } } },
+    /targets\.android\.masters\.icon \(assets\/brand\/none\.svg\) is missing/,
+  )
+})

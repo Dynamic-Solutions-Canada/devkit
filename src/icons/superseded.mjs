@@ -11,6 +11,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 
+import { targetEntries } from './entries.mjs'
 import {
   ANDROID_RESOURCE_NAMES,
   DEFAULT_PLAY_PATH,
@@ -21,21 +22,23 @@ import {
 const ICON_FOLDER = /^(drawable|mipmap)(-|$)/
 
 /**
- * Returns the repo-relative paths that devkit-icons would supersede, sorted.
+ * Returns the repo-relative paths that devkit-icons would supersede, sorted, across every
+ * Android entry (one per app when `targets.android` is a list).
  *
  * `config` is the loaded `icons.json`; `planned` is the list of outputs this run writes, so a
  * file devkit itself produces is never named.
  */
 export function supersededFiles(root, config, planned) {
-  const android = config.targets.android
-  if (!android) return []
-
   const written = new Set(planned.map((output) => output.path))
-  const found = [
-    ...shadowingResources(root, android.res, written),
-    ...oldPlayIcon(root, android, written),
-  ]
-  return found.sort()
+  const found = new Set()
+  for (const { name, entry } of targetEntries(config.targets)) {
+    if (name !== 'android') continue
+    for (const file of shadowingResources(root, entry.res, written)) {
+      found.add(file)
+    }
+    for (const file of oldPlayIcon(root, entry, written)) found.add(file)
+  }
+  return [...found].sort()
 }
 
 /** Same-named icon resources in `res/` that devkit did not write. */

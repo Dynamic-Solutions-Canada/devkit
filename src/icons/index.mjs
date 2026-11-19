@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
+import { targetEntries } from './entries.mjs'
 import { packIco } from './ico.mjs'
 import { supersededFiles } from './superseded.mjs'
 import { parseMaster } from './svg.mjs'
@@ -52,34 +53,75 @@ export function loadIconConfig(root) {
       `devkit-icons: set "background" in ${CONFIG_PATH} to a #RRGGBB colour for the opaque icons`,
     )
   }
-  for (const [name, required] of [
-    ['web', ['dir']],
-    ['windows', ['images', 'ico']],
-    ['android', ['res']],
-  ]) {
-    if (!targets[name]) continue
-    const missing = required.find(
-      (key) => typeof targets[name][key] !== 'string',
-    )
-    if (missing)
-      throw new Error(`devkit-icons: targets.${name}.${missing} must be a path`)
+  for (const { name, entry, label } of targetEntries(targets)) {
+    validateEntry(name, entry, label)
   }
-  for (const [name, key] of [
-    ['web', 'appleTouchMaster'],
-    ['android', 'playMaster'],
-  ]) {
-    const choice = targets[name]?.[key]
+  return { targets, background: config.background }
+}
+
+/** The keys each target must set to a path. */
+const REQUIRED_PATHS = {
+  web: ['dir'],
+  windows: ['images', 'ico'],
+  android: ['res'],
+}
+
+/** The keys that choose between the `"icon"` and `"maskable"` masters. */
+const MASTER_CHOICES = { web: ['appleTouchMaster'], android: ['playMaster'] }
+
+/** The masters an entry's `masters` block may replace, by key, and the shared file each replaces. */
+const MASTER_OVERRIDES = {
+  icon: 'icon.svg',
+  maskable: 'icon-maskable.svg',
+  mono: 'icon-mono.svg',
+}
+
+/** Checks one target entry; `label` names it in errors, as `targets.android[1]` for a list. */
+function validateEntry(name, entry, label) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(`devkit-icons: ${label} must be an object`)
+  }
+
+  const missing = REQUIRED_PATHS[name].find(
+    (key) => typeof entry[key] !== 'string',
+  )
+  if (missing)
+    throw new Error(`devkit-icons: ${label}.${missing} must be a path`)
+
+  for (const key of MASTER_CHOICES[name] ?? []) {
+    const choice = entry[key]
     if (choice !== undefined && !['icon', 'maskable'].includes(choice)) {
       throw new Error(
-        `devkit-icons: targets.${name}.${key} must be "icon" or "maskable"`,
+        `devkit-icons: ${label}.${key} must be "icon" or "maskable"`,
       )
     }
   }
-  const playPath = targets.android?.playPath
-  if (playPath !== undefined && typeof playPath !== 'string') {
-    throw new Error('devkit-icons: targets.android.playPath must be a path')
+
+  if (name === 'android' && entry.playPath !== undefined) {
+    if (typeof entry.playPath !== 'string') {
+      throw new Error(`devkit-icons: ${label}.playPath must be a path`)
+    }
   }
-  return { targets, background: config.background }
+
+  validateMasterOverrides(entry.masters, label)
+}
+
+/** Checks an entry's optional `masters` block: known keys, each a repo-relative path. */
+function validateMasterOverrides(overrides, label) {
+  if (overrides === undefined) return
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
+    throw new Error(`devkit-icons: ${label}.masters must be an object`)
+  }
+  for (const [key, file] of Object.entries(overrides)) {
+    if (!MASTER_OVERRIDES[key]) {
+      throw new Error(
+        `devkit-icons: ${label}.masters.${key} is not a master; use ${Object.keys(MASTER_OVERRIDES).join(', ')}`,
+      )
+    }
+    if (typeof file !== 'string') {
+      throw new Error(`devkit-icons: ${label}.masters.${key} must be a path`)
+    }
+  }
 }
 
 /** Reads the masters that exist, parsed, keeping the original text for outputs that copy it. */
@@ -94,6 +136,29 @@ function loadMasters(root) {
   }
   if (!masters['icon.svg'])
     throw new Error('devkit-icons: assets/brand/icon.svg is missing')
+  return masters
+}
+
+/**
+ * The masters one entry draws from: the shared ones, with any its `masters` block replaces read
+ * from their repo-relative paths. Generated exports always use the shared masters.
+ */
+function entryMasters(root, shared, overrides, label) {
+  if (!overrides) return shared
+
+  const masters = { ...shared, source: { ...shared.source } }
+  for (const [key, file] of Object.entries(overrides)) {
+    const absolute = path.join(root, file)
+    if (!existsSync(absolute)) {
+      throw new Error(
+        `devkit-icons: ${label}.masters.${key} (${file}) is missing`,
+      )
+    }
+    const name = MASTER_OVERRIDES[key]
+    const text = readFileSync(absolute, 'utf8')
+    masters.source[name] = text
+    masters[name] = parseMaster(text, file)
+  }
   return masters
 }
 
@@ -133,10 +198,30 @@ export function planIcons(root) {
   const config = loadIconConfig(root)
   const masters = loadMasters(root)
   const outputs = [...generatedOutputs(masters)]
-  for (const [name, options] of Object.entries(config.targets)) {
-    outputs.push(...TARGETS[name](masters, options, config))
+  for (const { name, entry, label } of targetEntries(config.targets)) {
+    const drawFrom = entryMasters(root, masters, entry.masters, label)
+    outputs.push(...TARGETS[name](drawFrom, entry, config))
   }
+  assertDistinctPaths(outputs)
   return outputs
+}
+
+/**
+ * Fails when two outputs would write the same file, so one target cannot silently overwrite
+ * another's (for example two targets left on the default Play icon path).
+ */
+function assertDistinctPaths(outputs) {
+  const seen = new Set()
+  const repeated = new Set()
+  for (const { path: file } of outputs) {
+    if (seen.has(file)) repeated.add(file)
+    seen.add(file)
+  }
+  if (repeated.size > 0) {
+    throw new Error(
+      `devkit-icons: more than one output writes ${[...repeated].sort().join(', ')}; give each target its own paths in ${CONFIG_PATH}`,
+    )
+  }
 }
 
 /** Renders one output to the bytes that belong on disk. */
