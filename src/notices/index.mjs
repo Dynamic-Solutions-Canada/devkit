@@ -10,12 +10,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import {
-  closureDirectories,
-  compare,
-  isThirdParty,
-  readPackage,
-} from './packages.mjs'
+import { closureDirectories } from './lockfile.mjs'
+import { compare, isThirdParty, readPackage } from './packages.mjs'
 import { renderNotices } from './render.mjs'
 
 /**
@@ -23,10 +19,10 @@ import { renderNotices } from './render.mjs'
  * and the problems that must stop it: a package with no declared licence and no licence file, an
  * `UNLICENSED` package, and an `allow` entry that names no package in the closure.
  */
-export function collectDeliverable(root, deliverable, options = {}) {
+export function collectDeliverable(root, deliverable) {
   const byKey = new Map()
   for (const folder of deliverable.packages) {
-    for (const directory of closureDirectories(root, folder, options)) {
+    for (const directory of closureDirectories(root, folder)) {
       if (!isThirdParty(directory)) continue
       const record = readPackage(directory)
       if (!record) continue
@@ -94,7 +90,7 @@ export function selectDeliverables(notices, only = []) {
  * Builds every deliverable in memory as `{ output, text, count }`. Throws one error listing every
  * licence problem across them, so a run never writes a partial set.
  */
-export function planNotices(root, notices, options = {}) {
+export function planNotices(root, notices) {
   if (notices.length === 0) {
     throw new Error(
       'devkit-notices: add a `notices` block to devkit.config.mjs; see "Third-party notices" in devkit\'s README',
@@ -104,7 +100,7 @@ export function planNotices(root, notices, options = {}) {
   const planned = []
   const problems = []
   for (const deliverable of notices) {
-    const collected = collectDeliverable(root, deliverable, options)
+    const collected = collectDeliverable(root, deliverable)
     for (const problem of collected.problems) {
       problems.push(`${deliverable.output}: ${problem}`)
     }
@@ -124,8 +120,8 @@ export function planNotices(root, notices, options = {}) {
 }
 
 /** Writes every deliverable's notices file and returns what was written. */
-export function writeNotices(root, notices, options) {
-  const planned = planNotices(root, notices, options)
+export function writeNotices(root, notices) {
+  const planned = planNotices(root, notices)
   for (const { output, text } of planned) {
     const file = path.join(root, output)
     mkdirSync(path.dirname(file), { recursive: true })
@@ -135,8 +131,8 @@ export function writeNotices(root, notices, options) {
 }
 
 /** Returns the outputs whose file is missing or differs from a fresh build; writes nothing. */
-export function checkNotices(root, notices, options) {
-  return planNotices(root, notices, options)
+export function checkNotices(root, notices) {
+  return planNotices(root, notices)
     .filter(({ output, text }) => {
       const file = path.join(root, output)
       return !existsSync(file) || readFileSync(file, 'utf8') !== text

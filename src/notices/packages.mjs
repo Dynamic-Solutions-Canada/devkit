@@ -1,19 +1,9 @@
 /**
- * Reads the production dependency closure of one package folder, and what each third-party
- * package in it declares and ships about its licence.
- *
- * The closure comes from `npm ls --omit=dev --all --parseable`, run in the folder itself when it
- * has its own lockfile, and from the repo root with `--workspace <folder>` otherwise. Only the
- * paths npm prints are used to find files; none of them reaches the output.
+ * Reads what each third-party package in a closure declares and ships about its licence. The
+ * closure itself comes from `lockfile.mjs`. Install paths are used only to find files; none of
+ * them reaches the output.
  */
-import { execFileSync } from 'node:child_process'
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 /** File names that hold a licence or a notice a package ships. */
@@ -21,49 +11,6 @@ const LICENSE_FILE = /^(licen[sc]e|copying|notice|unlicense)(\..*)?$/i
 
 /** npm's `license` value naming a file instead of an SPDX id. */
 const SEE_LICENSE_IN = /^SEE LICEN[SC]E IN (.+)$/i
-
-/**
- * Returns the real directories of every package in `folder`'s production closure, including the
- * repo's own packages; the caller decides what is third party. Throws with npm's message when the
- * installed tree is missing or invalid.
- */
-export function closureDirectories(root, folder, { npm = 'npm' } = {}) {
-  const packageDir = path.join(root, folder)
-  const standalone = existsSync(path.join(packageDir, 'package-lock.json'))
-  const args = ['ls', '--omit=dev', '--all', '--parseable']
-  if (!standalone) args.push('--workspace', folder)
-
-  let output
-  try {
-    output = execFileSync(npm, args, {
-      cwd: standalone ? packageDir : root,
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-  } catch (error) {
-    const detail = String(error.stderr ?? error.message).trim()
-    throw new Error(
-      `devkit-notices: npm ls failed for ${folder}; install its dependencies first.\n${detail}`,
-      { cause: error },
-    )
-  }
-
-  return output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((directory) => realpath(directory))
-}
-
-/** The real path of `directory`, or the path itself when it cannot be resolved. */
-function realpath(directory) {
-  try {
-    return realpathSync(directory)
-  } catch {
-    return directory
-  }
-}
 
 /**
  * True for an installed dependency. A package whose real folder is not inside a `node_modules`
