@@ -37,8 +37,13 @@ const FAKE_DOCKER = `#!/usr/bin/env bash
 echo "docker $*" >> "$FAKE_LOG"
 args="$*"
 case "$args" in
-  *" ps -q "*) printf '%s' "\${FAKE_DB_CONTAINER:-}" ;;
-  *" exec -T "*) printf '%b' "\${FAKE_DUMP:-}" ;;
+  "ps -q "*)
+    if [[ -n "\${FAKE_PS_STATUS:-}" ]]; then echo "Cannot connect to the Docker daemon" >&2; exit "$FAKE_PS_STATUS"; fi
+    # Answer only the label pair that names this checkout's database service.
+    if [[ "$args" == *"label=com.docker.compose.service=\${FAKE_DB_SERVICE:-db}"* && "$args" == *"label=com.docker.compose.project.working_dir=\${FAKE_DB_DIR:-$PWD}" ]]; then
+      printf '%s\n' \${FAKE_DB_CONTAINER:-}
+    fi ;;
+  "exec -i "*) printf '%b' "\${FAKE_DUMP:-}" ;;
   *" up "*) echo "labels $DEPLOY_REVISION $DEPLOY_VERSION" >> "$FAKE_LOG"; exit "\${FAKE_UP_STATUS:-0}" ;;
   "exec "*" nginx -t") exit "\${FAKE_NGINX_TEST_STATUS:-0}" ;;
 esac
@@ -108,7 +113,7 @@ test('a deploy runs the CTR-11 steps in order and installs a new site file', (t)
 
   const order = [
     'git status',
-    'exec -T db',
+    'exec -i db123',
     'git pull --ff-only origin main',
     'up --build -d --wait',
     'nginx -t',
@@ -140,7 +145,7 @@ test('a dirty server checkout is refused before anything changes', (t) => {
   })
   assert.equal(result.status, 1)
   assert.match(result.stderr, /tracked changes/)
-  assert.equal(callIndex(result.calls, 'exec -T'), -1)
+  assert.equal(callIndex(result.calls, 'exec -i'), -1)
   assert.equal(callIndex(result.calls, 'git pull'), -1)
 })
 
@@ -228,7 +233,7 @@ test('skip flags leave out the dump and the prune, and the override file is adde
     options: { skipBackup: true, skipPrune: true },
   })
   assert.equal(result.status, 0, result.stderr)
-  assert.equal(callIndex(result.calls, 'exec -T'), -1)
+  assert.equal(callIndex(result.calls, 'exec -i'), -1)
   assert.equal(callIndex(result.calls, 'image prune'), -1)
   assert.ok(
     callIndex(
@@ -378,4 +383,62 @@ test('versionFrom takes the product version from a workspace package.json', (t) 
       }),
     /does not exist/,
   )
+})
+
+test('the database is found by its Compose labels, even when the compose files are not on the server yet', (t) => {
+  const fake = server(t)
+  // The repo is switching to compose.server.yml; the server checkout only has the old file.
+  writeFileSync(path.join(fake.repo, 'compose.yml'), '')
+  const result = deploy(fake)
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(
+    callIndex(result.calls, 'exec -i db123') >= 0,
+    result.calls.join('\n'),
+  )
+  assert.equal(readdirSync(path.join(fake.repo, '.backups')).length, 1)
+  // The lookup never went through the compose files: compose is first called after the dump.
+  assert.ok(
+    callIndex(result.calls, 'docker compose') >
+      callIndex(result.calls, 'exec -i db123'),
+    result.calls.join('\n'),
+  )
+})
+
+test('a docker error while looking for the database stops the deploy instead of skipping the backup', (t) => {
+  const fake = server(t)
+  const result = deploy(fake, { env: { FAKE_PS_STATUS: '1' } })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /refusing to deploy without a backup/)
+  assert.equal(callIndex(result.calls, 'git pull'), -1)
+})
+
+test('only a database belonging to this checkout and service counts', (t) => {
+  const otherCheckout = server(t)
+  const elsewhere = deploy(otherCheckout, {
+    env: { FAKE_DB_DIR: '/home/apps/other' },
+  })
+  assert.equal(elsewhere.status, 0, elsewhere.stderr)
+  assert.match(elsewhere.stdout, /nothing to back up/)
+
+  const otherService = server(t)
+  const renamed = deploy(otherService, { env: { FAKE_DB_SERVICE: 'database' } })
+  assert.match(renamed.stdout, /nothing to back up/)
+})
+
+test('two running database containers for one checkout are refused as ambiguous', (t) => {
+  const fake = server(t)
+  const result = deploy(fake, { env: { FAKE_DB_CONTAINER: 'db123 db456' } })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /refusing to guess/)
+  assert.equal(callIndex(result.calls, 'exec -i'), -1)
+})
+
+test('compose files in a subfolder are matched by that folder', (t) => {
+  const fake = server(t)
+  const result = deploy(fake, {
+    env: { FAKE_DB_DIR: `${fake.repo}/deploy` },
+    settingsOverrides: { composeFiles: ['deploy/compose.server.yml'] },
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(callIndex(result.calls, 'exec -i db123') >= 0, result.stdout)
 })

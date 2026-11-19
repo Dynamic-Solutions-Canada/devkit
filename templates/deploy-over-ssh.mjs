@@ -152,6 +152,44 @@ function composeLines(settings) {
 }
 
 /**
+ * Lines that find this checkout's running database container without the compose files, so the
+ * lookup works on the deploy that first switches to a renamed file, before the pull brings it.
+ *
+ * Compose labels every container with its project folder (the folder of the first compose file)
+ * and its service name; those two identify this checkout's database however the project is named,
+ * and before and after `name:` changes. The checkout and each configured compose file's folder are
+ * tried, with and without symlinks resolved. A docker error is fatal, never "nothing to back up"; only no matching container
+ * means a first deploy, and more than one is refused as ambiguous.
+ */
+function findDatabaseLines(service, composeFiles) {
+  const composeDirs = [
+    ...new Set(composeFiles.map((file) => path.posix.dirname(file))),
+  ].filter((dir) => dir !== '.')
+  return [
+    'checkout_dirs=("$PWD" "$(pwd -P)")',
+    ...composeDirs.map(
+      (dir) =>
+        `checkout_dirs+=("$PWD/"${shellQuote(dir)} "$(pwd -P)/"${shellQuote(dir)})`,
+    ),
+    'db_ids=""',
+    'for checkout_dir in "${checkout_dirs[@]}"; do',
+    '  if ! found="$(docker ps -q \\',
+    `      --filter "label=com.docker.compose.service=${service}" \\`,
+    '      --filter "label=com.docker.compose.project.working_dir=$checkout_dir")"; then',
+    '    echo "Could not list containers to find the database; refusing to deploy without a backup." >&2',
+    '    exit 1',
+    '  fi',
+    '  db_ids+="$found"$\'\\n\'',
+    'done',
+    'db_container="$(printf "%s" "$db_ids" | sed "/^$/d" | sort -u)"',
+    'if [[ "$(printf "%s" "$db_container" | grep -c .)" -gt 1 ]]; then',
+    `  echo "More than one running ${service} container belongs to this checkout; refusing to guess which to back up." >&2`,
+    '  exit 1',
+    'fi',
+  ]
+}
+
+/**
  * Lines that dump the database before the checkout or containers change. pg_dump and
  * mariadb-dump can exit 0 after a dropped connection, so the dump must pass `gzip -t` and end with
  * the engine's completion trailer; an incomplete dump is deleted and the deploy stops.
@@ -164,12 +202,12 @@ function backupLines(settings, options, sha) {
     return ['echo "Skipping the database backup (--skip-backup)."']
   }
   const dir = shellQuote(options.backupDir)
-  const service = shellQuote(settings.databaseService)
+  const service = settings.databaseService
   return [
     'echo "Backing up the database before deploying..."',
-    `db_container="$(docker compose "\${compose_args[@]}" ps -q ${service} 2>/dev/null || true)"`,
+    ...findDatabaseLines(service, settings.composeFiles),
     'if [[ -z "$db_container" ]]; then',
-    '  echo "No database container yet: nothing to back up."',
+    `  echo "No running ${service} container belongs to this checkout yet: nothing to back up."`,
     'else',
     '  (',
     '    umask 077',
@@ -177,7 +215,7 @@ function backupLines(settings, options, sha) {
     `    chmod 700 ${dir}`,
     `    backup_file=${dir}/"pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-${sha.slice(0, 12)}.sql.gz"`,
     '    dump_ok=1',
-    `    docker compose "\${compose_args[@]}" exec -T ${service} sh -c ${shellQuote(settings.dump.command)} | gzip > "$backup_file" || dump_ok=0`,
+    `    docker exec -i "$db_container" sh -c ${shellQuote(settings.dump.command)} | gzip > "$backup_file" || dump_ok=0`,
     `    if [[ $dump_ok -eq 0 ]] || ! gzip -t "$backup_file" || ! gzip -dc "$backup_file" | tail -5 | grep -qF ${shellQuote(settings.dump.trailer)}; then`,
     '      rm -f "$backup_file"',
     '      echo "The database dump is incomplete; refusing to deploy. Rerun with --skip-backup only once a dump exists another way." >&2',
