@@ -23,7 +23,7 @@ const bin = fileURLToPath(new URL('../bin/devkit-init.mjs', import.meta.url))
 const runnerTemplate = fileURLToPath(
   new URL('../templates/run-dev.mjs', import.meta.url),
 )
-const ALL = { runner: true, paseo: true, scripts: true }
+const ALL = { runner: true, paseo: true, scripts: true, deploy: true }
 
 /** Creates a temporary app containing `files` (path to contents) and returns its root. */
 function app(t, files) {
@@ -61,6 +61,7 @@ test('a fresh app gets the runner, lifecycle scripts, paseo.json and a first com
     'compose.dev.yml',
     'package.json',
     'paseo.json',
+    'scripts/deploy/deploy-over-ssh.mjs',
     'scripts/dev/run-dev.mjs',
   ])
   assert.equal(
@@ -76,6 +77,10 @@ test('a fresh app gets the runner, lifecycle scripts, paseo.json and a first com
     'devkit prepare && npm run --if-present dev:postprepare',
   )
   assert.equal(scripts.build, 'vite build')
+  assert.equal(
+    scripts['deploy:prod'],
+    'node --env-file-if-exists=.env scripts/deploy/deploy-over-ssh.mjs',
+  )
 
   const paseo = readJson(root, 'paseo.json')
   assert.match(paseo.worktree.teardown, /cleanup --paseo --yes$/)
@@ -165,11 +170,18 @@ test('opt-outs keep a hand-written runner, its dev script and compose file out o
   const root = app(t, {
     'package.json': { scripts: { dev: 'node scripts/dev/custom.mjs' } },
   })
-  const generated = { runner: false, paseo: true, scripts: true }
+  const generated = {
+    runner: false,
+    paseo: true,
+    scripts: true,
+    deploy: false,
+  }
   writeTemplates({ root, generated })
 
   assert.ok(!existsSync(path.join(root, 'scripts/dev/run-dev.mjs')))
   assert.ok(!existsSync(path.join(root, 'compose.dev.yml')))
+  assert.ok(!existsSync(path.join(root, 'scripts/deploy/deploy-over-ssh.mjs')))
+  assert.equal(readJson(root, 'package.json').scripts['deploy:prod'], undefined)
   assert.equal(
     readJson(root, 'package.json').scripts.dev,
     'node scripts/dev/custom.mjs',
@@ -223,10 +235,46 @@ test('generated opt-outs in devkit.config.mjs merge with the defaults and are va
     runner: false,
     paseo: true,
     scripts: true,
+    deploy: true,
   })
 
   const bad = app(t, {
     'devkit.config.mjs': 'export default { generated: { compose: false } }\n',
   })
   await assert.rejects(loadProjectConfig(bad), /`generated` may set only/)
+})
+
+test('the deploy block in devkit.config.mjs is validated', async (t) => {
+  const { loadProjectConfig } = await import('../src/project-config.mjs')
+  const good = app(t, {
+    'devkit.config.mjs':
+      "export default { deploy: { databaseService: 'db', backupsKept: 5, site: null } }\n",
+  })
+  assert.deepEqual((await loadProjectConfig(good)).deploy, {
+    databaseService: 'db',
+    backupsKept: 5,
+    site: null,
+  })
+
+  for (const [deploy, message] of [
+    ["{ branch: 'dev' }", /is not a deploy setting/],
+    ['{ backupsKept: 0 }', /positive whole number/],
+    ["{ composeFiles: ['/etc/compose.yml'] }", /repo-relative/],
+    ["{ site: { name: 'app' } }", /ending in \.conf/],
+  ]) {
+    const bad = app(t, {
+      'devkit.config.mjs': `export default { deploy: ${deploy} }\n`,
+    })
+    await assert.rejects(loadProjectConfig(bad), message)
+  }
+})
+
+test('the deploy template is valid JavaScript', () => {
+  const template = fileURLToPath(
+    new URL('../templates/deploy-over-ssh.mjs', import.meta.url),
+  )
+  const result = spawnSync(process.execPath, ['--check', template], {
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
 })

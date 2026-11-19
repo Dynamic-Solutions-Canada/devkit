@@ -70,7 +70,13 @@ const DEFAULTS = {
    * Which outputs `devkit-init` owns. Set one to false to keep a hand-written version, such as a
    * custom dev runner; the check then ignores it as well.
    */
-  generated: { runner: true, paseo: true, scripts: true },
+  generated: { runner: true, paseo: true, scripts: true, deploy: true },
+  /**
+   * Settings for the generated deploy script, which applies its own defaults (see
+   * `templates/deploy-over-ssh.mjs`): `databaseService`, `composeFiles`, `backupsKept`, `site`
+   * (`{ source, name }` or null) and `healthWaitSeconds`.
+   */
+  deploy: {},
 }
 
 function fail(message) {
@@ -223,6 +229,7 @@ function validate(config) {
   }
   validateTest(config.test)
   validateGenerated(config.generated)
+  validateDeploy(config.deploy)
   return config
 }
 
@@ -232,7 +239,7 @@ function isTestFileSuffix(suffix) {
   return TEST_FILE_SUFFIXES.some((ending) => suffix.endsWith(ending))
 }
 
-/** Validates the `devkit-init` opt-outs: an object of the three known output names, each a boolean. */
+/** Validates the `devkit-init` opt-outs: an object of the known output names, each a boolean. */
 function validateGenerated(generated) {
   const names = Object.keys(DEFAULTS.generated)
   if (
@@ -243,8 +250,66 @@ function validateGenerated(generated) {
     names.some((name) => typeof generated[name] !== 'boolean')
   ) {
     fail(
-      '`generated` may set only `runner`, `paseo` and `scripts`, each true or false',
+      '`generated` may set only `runner`, `paseo`, `scripts` and `deploy`, each true or false',
     )
+  }
+}
+
+/** True when `value` is a positive whole number. */
+function isPositiveInteger(value) {
+  return Number.isInteger(value) && value > 0
+}
+
+/** Validates the shape of the `deploy` block; the deploy script supplies the defaults. */
+function validateDeploy(deploy) {
+  if (!deploy || typeof deploy !== 'object' || Array.isArray(deploy)) {
+    fail('`deploy` must be an object')
+  }
+  const known = [
+    'databaseService',
+    'composeFiles',
+    'backupsKept',
+    'site',
+    'healthWaitSeconds',
+  ]
+  const unknown = Object.keys(deploy).find((key) => !known.includes(key))
+  if (unknown) fail(`\`deploy.${unknown}\` is not a deploy setting`)
+
+  if (
+    deploy.databaseService !== undefined &&
+    !/^[a-z0-9][a-z0-9_-]*$/.test(deploy.databaseService)
+  ) {
+    fail('`deploy.databaseService` must be a compose service name')
+  }
+  if (
+    deploy.composeFiles !== undefined &&
+    (!Array.isArray(deploy.composeFiles) ||
+      deploy.composeFiles.length === 0 ||
+      deploy.composeFiles.some((file) => !isRepoRelativePath(file)))
+  ) {
+    fail(
+      '`deploy.composeFiles` must be a non-empty array of repo-relative paths',
+    )
+  }
+  for (const key of ['backupsKept', 'healthWaitSeconds']) {
+    if (deploy[key] !== undefined && !isPositiveInteger(deploy[key])) {
+      fail(`\`deploy.${key}\` must be a positive whole number`)
+    }
+  }
+
+  const site = deploy.site
+  if (site === undefined || site === null) return
+  if (typeof site !== 'object' || Array.isArray(site)) {
+    fail('`deploy.site` must be `{ source, name }` or null')
+  }
+  if (site.source !== undefined && !isRepoRelativePath(site.source)) {
+    fail('`deploy.site.source` must be a repo-relative path')
+  }
+  if (
+    site.name !== undefined &&
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*\.conf$/.test(site.name)
+  ) {
+    fail('`deploy.site.name` must be a file name ending in .conf')
   }
 }
 
@@ -340,6 +405,7 @@ export async function loadProjectConfig(repoRoot) {
     database: { ...DEFAULTS.database, ...provided.database },
     test: { ...DEFAULTS.test, ...provided.test },
     generated: { ...DEFAULTS.generated, ...provided.generated },
+    deploy: { ...provided.deploy },
     configPath,
   })
 }

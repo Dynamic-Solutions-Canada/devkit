@@ -22,6 +22,7 @@ const DEVKIT_CLI =
 
 export const RUNNER_PATH = 'scripts/dev/run-dev.mjs'
 export const COMPOSE_PATH = 'compose.dev.yml'
+export const DEPLOY_PATH = 'scripts/deploy/deploy-over-ssh.mjs'
 
 /** The lifecycle npm scripts devkit owns (SCRIPT-7). `dev` is owned only with the runner. */
 const LIFECYCLE_SCRIPTS = {
@@ -36,6 +37,9 @@ const LIFECYCLE_SCRIPTS = {
     'devkit prepare && npm run --if-present dev:postprepare',
 }
 const RUNNER_SCRIPT = { dev: `devkit run node ${RUNNER_PATH}` }
+const DEPLOY_SCRIPT = {
+  'deploy:prod': `node --env-file-if-exists=.env ${DEPLOY_PATH}`,
+}
 
 /** npm scripts that `paseo.json` mirrors, in order, when the app defines them (AI-12). */
 const PASEO_SCRIPTS = [
@@ -62,10 +66,11 @@ function formatJson(value) {
 
 /** The npm scripts devkit owns for this app, given its `generated` options. */
 function ownedScripts(generated) {
-  if (!generated.scripts) return {}
-  return generated.runner
-    ? { ...RUNNER_SCRIPT, ...LIFECYCLE_SCRIPTS }
-    : { ...LIFECYCLE_SCRIPTS }
+  return {
+    ...(generated.scripts && generated.runner ? RUNNER_SCRIPT : {}),
+    ...(generated.scripts ? LIFECYCLE_SCRIPTS : {}),
+    ...(generated.deploy ? DEPLOY_SCRIPT : {}),
+  }
 }
 
 /**
@@ -113,12 +118,21 @@ export function planTemplates({ root, generated }) {
   if (!pkg)
     throw new Error('devkit-init: run it from an app root with a package.json')
   const scripts = { ...pkg.scripts, ...ownedScripts(generated) }
-  if (generated.scripts) add('package.json', formatJson({ ...pkg, scripts }))
+  if (generated.scripts || generated.deploy) {
+    add('package.json', formatJson({ ...pkg, scripts }))
+  }
 
   if (generated.runner) {
     add(
       RUNNER_PATH,
       readFileSync(path.join(templatesDir, 'run-dev.mjs'), 'utf8'),
+    )
+  }
+
+  if (generated.deploy) {
+    add(
+      DEPLOY_PATH,
+      readFileSync(path.join(templatesDir, 'deploy-over-ssh.mjs'), 'utf8'),
     )
   }
 

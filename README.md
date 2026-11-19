@@ -115,12 +115,13 @@ Preflight reads these arguments from its own process. Runners that consume argum
 
 `devkit-init` writes the dev glue every app would otherwise copy by hand, and keeps it current:
 
-| Output                    | What devkit owns                                                                                                                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/dev/run-dev.mjs` | The whole file. Do not edit it.                                                                                                                                                                                                    |
-| `package.json`            | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
-| `paseo.json`              | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
-| `compose.dev.yml`         | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
+| Output                               | What devkit owns                                                                                                                                                                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/dev/run-dev.mjs`            | The whole file. Do not edit it.                                                                                                                                                                                                    |
+| `package.json`                       | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
+| `paseo.json`                         | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
+| `scripts/deploy/deploy-over-ssh.mjs` | The whole file, and the `deploy:prod` script that runs it. See [Deploying](#deploying).                                                                                                                                            |
+| `compose.dev.yml`                    | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
 
 The runner is the same in every app. On the host it does what [The dev runner](#the-dev-runner) shows; inside the container it runs the app's own `dev:container` npm script, which prepares the database and starts the dev servers (it sees `DEVKIT_FRESH=1` after `npm run dev -- --fresh`). Stop signals reach that script. `devkit-init` warns when `dev:container` is missing.
 
@@ -137,7 +138,49 @@ export default {
 }
 ```
 
-`generated` takes `runner`, `paseo` and `scripts`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
+`generated` takes `runner`, `paseo`, `scripts` and `deploy`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
+
+### Deploying
+
+The generated `scripts/deploy/deploy-over-ssh.mjs` deploys the current commit to a server that holds a checkout of the app and runs it with Docker Compose. It imports nothing from devkit: devkit supplies the script and takes no part in a deploy. `npm run deploy:prod` runs it, loading `.env` when there is one.
+
+It refuses to start unless the local tree is clean and `HEAD` is a freshly fetched `origin/main`, then runs `npm run validate` (`--skip-validate` skips it). On the server, in order, it:
+
+1. refuses a checkout with tracked changes;
+2. dumps the database from its container (`pg_dump`, or `mariadb-dump` when `database.engine` is `mariadb`), and stops unless the gzip file is intact and ends with the dump's completion line. An incomplete dump is deleted. The newest `backupsKept` dumps are kept. `--skip-backup` or `DEPLOY_BACKUP=0` skips this only when a dump exists another way. A first deploy with no database container has nothing to dump;
+3. fast-forwards the checkout to `main`, and stops unless it landed on the commit validated locally;
+4. runs `docker compose up --build -d --wait`, and stops with the status and recent logs if a service is not healthy in time;
+5. installs the nginx site file if it changed: the previous file is copied to `site-backups/` beside the sites folder, the new one must pass `nginx -t`, and nginx reloads gracefully. A failed test puts the previous file back and fails the deploy;
+6. prunes dangling images (`--no-prune` or `DEPLOY_PRUNE=0` skips it).
+
+`--dry-run` runs the local refusals and prints the server script without running anything.
+
+The server comes from the environment, usually the app's untracked `.env`:
+
+| Variable                 | Default                              |
+| ------------------------ | ------------------------------------ |
+| `DEPLOY_SSH_HOST`        | required                             |
+| `DEPLOY_SSH_PORT`        | `22`                                 |
+| `DEPLOY_REPO_PATH`       | required: the checkout on the server |
+| `DEPLOY_BACKUP_DIR`      | `.backups`, in the server checkout   |
+| `DEPLOY_NGINX_SITES_DIR` | `/home/apps/nginx/conf.d`            |
+| `DEPLOY_NGINX_CONTAINER` | `nginx`                              |
+
+What belongs to the app goes in `devkit.config.mjs`, all optional:
+
+```js
+export default {
+  deploy: {
+    databaseService: 'db', // the production database service
+    composeFiles: ['compose.server.yml'], // compose.override.yml is added when the server has one
+    backupsKept: 10,
+    site: { source: 'nginx.server.conf', name: 'my-app.conf' }, // name defaults to <package name>.conf; null for no site
+    healthWaitSeconds: 300,
+  },
+}
+```
+
+An app that keeps its own deploy script sets `generated: { deploy: false }`.
 
 ### Waiting for the database and the Vite server block
 
