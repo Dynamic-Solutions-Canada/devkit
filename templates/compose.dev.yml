@@ -23,6 +23,10 @@ services:
     ports:
       - "127.0.0.1:${DEVKIT_WEB_PORT:?web port is required}:${VITE_DEV_PORT:?vite port is required}"
       - "[::1]:${DEVKIT_WEB_PORT:?web port is required}:${VITE_DEV_PORT:?vite port is required}"
+    # Before mounting anything under HOME (for example a volume at /tmp/devkit-home/.android),
+    # create HOME in the image with `RUN install -d -m 1777 /tmp/devkit-home`, plus the mount
+    # point itself for a named volume. Otherwise Docker creates HOME owned by root and npm fails
+    # with EACCES. It is world-writable because the container runs as the host's uid, not `node`.
     volumes:
       - .:/workspace
     depends_on:
