@@ -19,7 +19,8 @@
     "devkit-init": "bin/devkit-init.mjs",
     "devkit-wait-for-db": "bin/devkit-wait-for-db.mjs",
     "devkit-icons": "bin/devkit-icons.mjs",
-    "devkit-precommit": "bin/devkit-precommit.mjs"
+    "devkit-precommit": "bin/devkit-precommit.mjs",
+    "devkit-notices": "bin/devkit-notices.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",

@@ -83,6 +83,13 @@ const DEFAULTS = {
    * (`{ source, name }` or null), `healthWaitSeconds`, `submodules` and `versionFrom`.
    */
   deploy: {},
+  /**
+   * The deliverables `devkit-notices` writes third-party notices for. Each is `{ title, packages,
+   * output, allow? }`: the packages whose production dependencies it ships (repo-relative
+   * folders), the notices file it writes, and package names allowed through without a usable
+   * licence (an `UNLICENSED` private package the app may ship).
+   */
+  notices: [],
 }
 
 function fail(message) {
@@ -236,6 +243,7 @@ function validate(config) {
   validateTest(config.test)
   validateGenerated(config.generated)
   validateDeploy(config.deploy)
+  validateNotices(config.notices)
   return config
 }
 
@@ -259,6 +267,62 @@ function validateGenerated(generated) {
       '`generated` may set only `runner`, `paseo`, `scripts`, `deploy` and `guard`, each true or false',
     )
   }
+}
+
+/** True when `value` is an array of non-empty strings. */
+function isNameList(value) {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === 'string' && item.length > 0)
+  )
+}
+
+/** Validates the `devkit-notices` deliverables: their fields, paths and allow lists. */
+function validateNotices(notices) {
+  if (!Array.isArray(notices))
+    fail('`notices` must be an array of deliverables')
+  const known = ['title', 'packages', 'output', 'allow']
+  const outputs = new Set()
+
+  notices.forEach((deliverable, index) => {
+    const at = `\`notices[${index}]\``
+    if (
+      !deliverable ||
+      typeof deliverable !== 'object' ||
+      Array.isArray(deliverable)
+    ) {
+      fail(`${at} must be an object`)
+    }
+    const unknown = Object.keys(deliverable).find((key) => !known.includes(key))
+    if (unknown) fail(`${at}.${unknown} is not a notices setting`)
+
+    if (
+      typeof deliverable.title !== 'string' ||
+      deliverable.title.length === 0
+    ) {
+      fail(`${at}.title must be a non-empty string`)
+    }
+    const { packages } = deliverable
+    if (
+      !Array.isArray(packages) ||
+      packages.length === 0 ||
+      packages.some((folder) => !isRepoRelativePath(folder))
+    ) {
+      fail(`${at}.packages must be a non-empty array of repo-relative folders`)
+    }
+    if (!isRepoRelativePath(deliverable.output)) {
+      fail(`${at}.output must be a repo-relative path`)
+    }
+    if (outputs.has(deliverable.output)) {
+      fail(
+        `${at}.output ${deliverable.output} is written by another deliverable`,
+      )
+    }
+    outputs.add(deliverable.output)
+    if (deliverable.allow !== undefined && !isNameList(deliverable.allow)) {
+      fail(`${at}.allow must be an array of package names`)
+    }
+  })
 }
 
 /** True when `value` is a positive whole number. */

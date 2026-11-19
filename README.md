@@ -279,6 +279,30 @@ Android vectors need masters made only of `<path d fill>` elements, the shape ou
 
 Rendering uses `@resvg/resvg-js`, which devkit does not install: add it to the repo as an exact dev dependency. A repo with no `node_modules` of its own (the Windows repos, through winui-app-kit's tools folder) sets `DEVKIT_ICONS_RENDERER_DIR` to a folder containing `node_modules/@resvg/resvg-js`, or to the package folder itself, and the renderer loads from there instead. The check compares bytes, so every machine must render with the same version.
 
+### Third-party notices
+
+`devkit-notices` writes one third-party notices file per deliverable: every package in the production dependency closure of what that deliverable ships, once each, sorted, with its declared licence, author, repository and the LICENSE, COPYING, NOTICE or UNLICENSE text it ships. `devkit-notices --check` (for `validate`) builds them in memory and fails when a file is missing or out of date. List the deliverables in `devkit.config.mjs`:
+
+```js
+export default {
+  notices: [
+    {
+      title: 'Example (web app and API server)',
+      packages: ['apps/web', 'apps/api', 'packages/shared'],
+      output: 'apps/web/public/THIRD-PARTY-NOTICES.txt',
+    },
+  ],
+}
+```
+
+`packages` are repo-relative folders. One with its own `package-lock.json` is read with `npm ls --omit=dev --all --parseable` in that folder; any other is read from the repo root with `--workspace <folder>`, so its dependencies must be installed. The repo's own packages (the root, its workspaces and `file:` links, anything not inside a `node_modules` folder) are never listed. Licence text is stored with LF line endings and entries are sorted by code point, so the file is the same on every machine and never contains an install path. A `SEE LICENSE IN <file>` licence includes that file.
+
+Both commands fail on a package that declares no licence and ships no licence file, and on one that declares `UNLICENSED`. A private package the app may ship goes in that deliverable's `allow` list (`allow: ['@vendor/sdk']`); a name in `allow` that is no longer in the deliverable's dependencies fails too, so the list cannot go stale.
+
+Linux x64 is the canonical platform. Packages that exist for one platform only, such as `@esbuild/linux-x64` or `@rollup/rollup-linux-x64-gnu`, appear as they are installed there, so run `--check` on Linux x64, as WSL, CI and the production images do; another platform reports drift. A deliverable built for several architectures, such as an arm64 build beside the x64 one, takes its notices from the x64 closure: the arm64 build differs only in its native binary packages, and the app says so in its own docs.
+
+Commit the files and check them in `validate`, or generate them in the build instead (`"build": "devkit-notices && vite build"`) and git-ignore them. A Docker build that runs it needs `devkit.config.mjs` copied in and devkit installed, which `npm ci` does when dev dependencies are installed. Hand-written credits for software that is not an npm package stay in the app.
+
 ### Refusing secrets and oversized files at commit time
 
 `devkit-precommit` is the shared pre-commit check. It refuses staged:
