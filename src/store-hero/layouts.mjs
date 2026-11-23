@@ -190,6 +190,22 @@ function dropShadow({ x, y, width, height, radius }) {
 }
 
 /**
+ * A mask that fades a cut window out over its lower part, ending fully transparent at the cut, so
+ * the UI clearly continues below rather than ending at a hard edge (D-123, policy 10.1). The fade
+ * runs over a fifth of the shown height, at least 96 units, so it reads at card size too.
+ */
+function bottomFade(context, { y, height }) {
+  const length = Math.max(96, height * 0.2)
+  const start = y + height - length
+  return (
+    '<defs>' +
+    `<linearGradient id="cut-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="${round(start)}" x2="0" y2="${round(y + height)}"><stop offset="0" stop-color="#FFFFFF" stop-opacity="1"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>` +
+    `<mask id="cut-fade"><rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#cut-gradient)"/></mask>` +
+    '</defs>'
+  )
+}
+
+/**
  * The split layout. The window is scaled to fit the space right of the panel (never above
  * `maxScale` times its logical size) and centred there, a little above the middle so its top,
  * where flyouts put their title and main control, sits in the top two-thirds.
@@ -219,7 +235,7 @@ export function splitLayout(job, output, context) {
     `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#tint-b)"/>`,
   )
 
-  // The enlarged window, whole, in the space right of the panel.
+  // The enlarged window, whole (or cut at the bottom and faded), in the space right of the panel.
   const area = {
     left: g.panelWidth + g.window.gap,
     width: context.width - g.panelWidth - g.window.gap * 2,
@@ -244,19 +260,20 @@ export function splitLayout(job, output, context) {
     scale,
     id: 'window',
   })
-  parts.push(
-    dropShadow({
-      x,
-      y,
-      width: window.width,
-      height: window.height,
-      radius: window.radius,
-    }),
-  )
-  parts.push(window.svg)
-  parts.push(
-    `<rect x="${round(x)}" y="${round(y)}" width="${round(window.width)}" height="${round(window.height)}" rx="${round(window.radius)}" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="1"/>`,
-  )
+  const shadow = dropShadow({
+    x,
+    y,
+    width: window.width,
+    height: window.height,
+    radius: window.radius,
+  })
+  const outline = `<rect x="${round(x)}" y="${round(y)}" width="${round(window.width)}" height="${round(window.height)}" rx="${round(window.radius)}" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="1"/>`
+  if (job.capture.fade === 'bottom') {
+    parts.push(bottomFade(context, { y, height: window.height }))
+    parts.push(`<g mask="url(#cut-fade)">${shadow}${window.svg}${outline}</g>`)
+  } else {
+    parts.push(shadow, window.svg, outline)
+  }
   context.notes.push({ upscale: (scale * context.pixelsPerUnit) / logical })
 
   // The brand panel and its copy, drawn last so the panel's shadow falls on the backdrop.

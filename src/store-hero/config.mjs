@@ -61,9 +61,17 @@ export function parseSize(value = DEFAULT_SIZE) {
 /**
  * Reads a capture's sidecar (`<capture>.json`, written by the capture helper) and the region the
  * hero shows: the whole window the sidecar records, or `crop` when given. A crop must contain the
- * whole window, because a hero that cuts the UI would misrepresent it (Store policy 10.1).
+ * whole window, because a hero that cuts the UI would misrepresent it (Store policy 10.1). The one
+ * exception is `fade: "bottom"`: the crop may then cut the window's bottom edge, and the layout
+ * fades the UI out there so it reads as continuing, not as ending.
+ *
+ * @param {string} assets the store-assets folder
+ * @param {string} source the capture, relative to `assets`
+ * @param {number[] | undefined} crop `[x, y, width, height]` in capture pixels
+ * @param {string} label names the entry in errors
+ * @param {'bottom' | undefined} fade where a crop may cut the window
  */
-export function resolveCapture(assets, source, crop, label) {
+export function resolveCapture(assets, source, crop, label, fade) {
   const file = path.join(assets, source)
   if (!existsSync(file)) fail(`${label}.source (${source}) is missing`)
   const { width, height } = pngHeader(readFileSync(file), source)
@@ -84,7 +92,7 @@ export function resolveCapture(assets, source, crop, label) {
   const windowRect = [window.x, window.y, window.width, window.height]
 
   const region =
-    crop === undefined ? windowRect : checkCrop(crop, windowRect, label)
+    crop === undefined ? windowRect : checkCrop(crop, windowRect, label, fade)
   const [x, y, w, h] = region
   if (x < 0 || y < 0 || x + w > width || y + h > height) {
     fail(
@@ -95,11 +103,22 @@ export function resolveCapture(assets, source, crop, label) {
   const scale = sidecar.scale ?? 100
   if (!Number.isFinite(scale) || scale <= 0)
     fail(`${path.basename(sidecarFile)} has an unreadable scale`)
-  return { file, width, height, region, scale, cropped: crop !== undefined }
+  return {
+    file,
+    width,
+    height,
+    region,
+    scale,
+    cropped: crop !== undefined,
+    fade: fade ?? null,
+  }
 }
 
-/** Checks an explicit `[x, y, width, height]` crop and that it keeps the whole window. */
-function checkCrop(crop, windowRect, label) {
+/**
+ * Checks an explicit `[x, y, width, height]` crop: it keeps the whole window, or, with
+ * `fade: "bottom"`, the whole window except part of its bottom, which it must then really cut.
+ */
+function checkCrop(crop, windowRect, label, fade) {
   const valid =
     Array.isArray(crop) && crop.length === 4 && crop.every(Number.isInteger)
   if (!valid || crop[2] <= 0 || crop[3] <= 0)
@@ -107,9 +126,25 @@ function checkCrop(crop, windowRect, label) {
 
   const [x, y, w, h] = crop
   const [wx, wy, ww, wh] = windowRect
-  const containsWindow =
-    x <= wx && y <= wy && x + w >= wx + ww && y + h >= wy + wh
-  if (!containsWindow) {
+  const keepsTopAndSides = x <= wx && y <= wy && x + w >= wx + ww
+  const keepsBottom = y + h >= wy + wh
+
+  if (fade === 'bottom') {
+    if (!keepsTopAndSides) {
+      fail(
+        `${label}.hero.crop may cut only the window's bottom edge (${windowRect.join(', ')}); its top and sides must stay whole`,
+      )
+    }
+    if (keepsBottom) {
+      fail(
+        `${label}.hero.fade is "bottom", but the crop keeps the whole window; remove fade to show it whole`,
+      )
+    }
+    if (y + h <= wy) fail(`${label}.hero.crop ends above the window`)
+    return crop
+  }
+
+  if (!keepsTopAndSides || !keepsBottom) {
     fail(
       `${label}.hero.crop must contain the whole window (${windowRect.join(', ')}); a hero shows a complete window or flyout, never part of one`,
     )
@@ -156,6 +191,15 @@ function checkHeroBlock(root, entry, label) {
   }
   if (hero.crop !== undefined && typeof entry.source !== 'string')
     fail(`${label}.hero.crop needs a source`)
+
+  // A faded cut is for a split hero's enlarged UI only, and only with a crop saying where to cut.
+  if (hero.fade !== undefined) {
+    if (hero.fade !== 'bottom') fail(`${label}.hero.fade can only be "bottom"`)
+    if (hero.layout !== 'split')
+      fail(`${label}.hero.fade applies only to the split layout`)
+    if (hero.crop === undefined)
+      fail(`${label}.hero.fade needs a crop saying where the window is cut`)
+  }
 }
 
 /**
@@ -261,7 +305,7 @@ export function loadHeroJobs(root, assetsDir = DEFAULT_ASSETS_DIR) {
 
     const capture =
       typeof entry.source === 'string'
-        ? resolveCapture(assets, entry.source, hero.crop, label)
+        ? resolveCapture(assets, entry.source, hero.crop, label, hero.fade)
         : null
     jobs.push({
       store,

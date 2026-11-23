@@ -415,6 +415,96 @@ test('loadHeroJobs refuses a crop that cuts the window, and accepts one around i
   )
 })
 
+test('fade: "bottom" lets a split crop cut only the window\'s bottom, and fades it out', (t) => {
+  const withHero = (extra) => ({
+    ...HERO_ENTRY,
+    hero: { ...HERO_ENTRY.hero, ...extra },
+  })
+
+  // The top and sides stay whole; the bottom is cut and faded.
+  const top = withHero({ crop: [1500, 640, 420, 200], fade: 'bottom' })
+  const [job] = loadHeroJobs(repo(t, { entry: top }))
+  assert.deepEqual(job.capture.region, [1500, 640, 420, 200])
+  assert.equal(job.capture.fade, 'bottom')
+
+  const refused = [
+    [
+      withHero({ crop: [1500, 640, 420, 200] }),
+      /must contain the whole window/,
+    ],
+    [
+      withHero({ crop: [1520, 640, 400, 200], fade: 'bottom' }),
+      /may cut only the window's bottom edge/,
+    ],
+    [
+      withHero({ crop: [1500, 660, 420, 200], fade: 'bottom' }),
+      /may cut only the window's bottom edge/,
+    ],
+    [
+      withHero({ crop: [1500, 640, 420, 380], fade: 'bottom' }),
+      /keeps the whole window; remove fade/,
+    ],
+    [
+      withHero({ crop: [1500, 600, 420, 30], fade: 'bottom' }),
+      /ends above the window/,
+    ],
+    [withHero({ fade: 'bottom' }), /fade needs a crop/],
+    [
+      withHero({ crop: [1500, 640, 420, 200], fade: 'top' }),
+      /fade can only be "bottom"/,
+    ],
+    [
+      withHero({
+        layout: 'brand-card',
+        crop: [1500, 640, 420, 200],
+        fade: 'bottom',
+      }),
+      /applies only to the split layout/,
+    ],
+  ]
+  for (const [entry, message] of refused) {
+    assert.throws(() => loadHeroJobs(repo(t, { entry })), message)
+  }
+
+  // The layout masks the window with a fade ending at the cut; a whole window has no mask.
+  const root = mkdtempSync(path.join(os.tmpdir(), 'devkit-store-hero-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  write(root, 'icon.svg', ICON)
+  const draw = (capture) =>
+    splitLayout(
+      {
+        primary: '#2563EB',
+        accent: '#10B981',
+        icon: path.join(root, 'icon.svg'),
+        capture,
+      },
+      {
+        locale: 'en-US',
+        name: 'Sample',
+        headline: 'Every room.',
+        subline: '',
+        path: 'hero.png',
+      },
+      {
+        width: 1366,
+        pixelsPerUnit: 1,
+        family: 'Noto Sans',
+        captureImage: 'data:image/png;base64,',
+        measureAt: monospace,
+        notes: [],
+      },
+    )
+  const base = { width: 1920, height: 1080, scale: 100 }
+  assert.match(
+    draw({ ...base, region: [1500, 640, 420, 200], fade: 'bottom' }),
+    /<g mask="url\(#cut-fade\)">/,
+  )
+  assert.doesNotMatch(
+    draw({ ...base, region: [1500, 640, 420, 380], fade: null }),
+    /cut-fade/,
+  )
+})
+
 test('loadHeroJobs checks the entry itself', (t) => {
   const cases = [
     [
