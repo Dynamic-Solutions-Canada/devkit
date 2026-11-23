@@ -1,0 +1,17 @@
+{
+  "microsoft": [
+    {
+      "file": "screenshots/{locale}/00-hero-dark.png",
+      "source": "raw/microsoft/00-flyout-dark.png",
+      "theme": "dark",
+      "hero": {
+        "layout": "split",
+        "icon": "assets/brand/icon.svg",
+        "primary": "#2563EB",
+        "accent": "#10B981"
+      },
+      "caption": "Every room's lights from the tray.",
+      "alt": "Sample App's tray flyout, enlarged beside the headline: a card per room with an on switch and a level slider."
+    }
+  ]
+}

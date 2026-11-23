@@ -1,0 +1,17 @@
+{
+  "microsoft": [
+    {
+      "file": "screenshots/{locale}/00-hero-dark.png",
+      "source": "raw/microsoft/00-window-dark.png",
+      "theme": "dark",
+      "hero": {
+        "layout": "brand-card",
+        "icon": "assets/brand/icon.svg",
+        "primary": "#7DD3FC",
+        "accent": "#FDBA74"
+      },
+      "caption": "Your library, organised for you.",
+      "alt": "Sample App's name and headline over a blue gradient, with its library window faded in behind on the right."
+    }
+  ]
+}
