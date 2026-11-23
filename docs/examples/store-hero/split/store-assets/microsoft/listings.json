@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "locales": {
+    "en-US": {
+      "title": "Sample App",
+      "heroHeadline": "Every room's lights, one click from the tray.",
+      "heroSubline": "A switch and a level slider for each room."
+    },
+    "en-CA": { "copyFrom": "en-US" },
+    "ja-JP": {
+      "title": "Sample App",
+      "heroHeadline": "すべての部屋の照明を、トレイからワンクリックで。",
+      "heroSubline": "部屋ごとにスイッチと明るさのスライダー。"
+    }
+  }
+}

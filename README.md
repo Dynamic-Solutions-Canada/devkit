@@ -318,6 +318,57 @@ Linux x64 is the canonical platform. Packages that exist for one platform only, 
 
 Commit the files and check them in `validate`, or generate them in the build instead (`"build": "devkit-notices && vite build"`) and git-ignore them. A Docker build that runs it needs `devkit.config.mjs` copied in and devkit installed, which `npm ci` does when dev dependencies are installed. Hand-written credits for software that is not an npm package stay in the app.
 
+### Store heroes
+
+`devkit-store-hero` draws a listing's first Store screenshot, the only one Store search shows, as a generated hero in every listing locale, and `devkit-store-hero --check` (for `validate`) fails when a committed hero no longer matches its inputs. It has two layouts:
+
+| Layout       | What it shows                                                                                                                                                      | For                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| `split`      | a brand-colour panel with the icon, name, accent bar, headline and optional subline on the left; the app's real window or flyout, whole and enlarged, on the right | apps whose main surface is a flyout or popup       |
+| `brand-card` | icon, name, accent bar, headline and subline over a brand gradient, with the app's window faded in behind on the right when a capture is given                     | apps whose UI is setup that users rarely see again |
+
+| `split` (`ja-JP`)                                                                                       | `brand-card` (`en-US`)                                                                                            |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| ![Split hero](docs/examples/store-hero/split/store-assets/microsoft/screenshots/ja-JP/00-hero-dark.png) | ![Brand card hero](docs/examples/store-hero/brand-card/store-assets/microsoft/screenshots/en-US/00-hero-dark.png) |
+
+The hero is the first entry of a store's list in `store-assets/manifest.json`, with a `hero` block:
+
+```json
+{
+  "size": "1366x768",
+  "microsoft": [
+    {
+      "file": "screenshots/{locale}/00-hero-dark.png",
+      "source": "raw/microsoft/00-flyout-dark.png",
+      "theme": "dark",
+      "hero": {
+        "layout": "split",
+        "icon": "assets/generated/icon-256.png",
+        "primary": "#2563EB",
+        "accent": "#10B981"
+      },
+      "caption": "...",
+      "alt": "..."
+    }
+  ]
+}
+```
+
+- `file` is under `store-assets/<store>/`, like every other entry, and must contain `{locale}`: each locale gets its own image.
+- `source` is the raw capture under `store-assets/`, with the capture helper's `<name>.json` sidecar beside it. The hero shows the whole window the sidecar records, never part of it. `hero.crop` (`[x, y, width, height]` in capture pixels) may widen that region, and is refused if it would cut the window. A capture taken at 200% display scale (sidecar `"scale": 200`) is drawn at its logical size and looks sharper; a plain run says when a 100% capture is enlarged enough to look soft. `split` needs a capture; for `brand-card` it is optional.
+- `hero.icon` is repo-relative, a `.png` or `.svg`. `primary` and `accent` are `#RRGGBB`: the panel or gradient is drawn from `primary`, the accent bar runs from `primary` to `accent`.
+- The output size is the manifest's `size` (1366 x 768 by default, up to 3840 x 2160, about 16:9), so the hero matches the listing's other screenshots. The PNG is 8-bit RGB without alpha, with unfiltered rows, the format winui-app-kit's screenshot renderer writes.
+
+The text comes from the same store's `listings.json`. Every locale with its own record needs `heroHeadline`, and the command names every locale that lacks one before drawing anything. `heroSubline` is required for `brand-card`, and for `split` is set in every locale or none. A `copyFrom` locale reuses its target's image and needs neither. The app name is the locale's `title`. A `\n` in either field forces a line break; otherwise lines are broken at word boundaries (Japanese and Chinese words too) and balanced. The headline starts large and shrinks in steps until it fits above the bottom third of the image, which Microsoft reserves for overlays; if it still does not fit at the smallest size that reads on a 320 x 180 search card, the command fails and names the locale, so shorten it there.
+
+Text is drawn in Noto Sans, and in Noto Sans CJK JP or SC for Japanese and Simplified Chinese (whose shared characters differ by region), because Segoe UI ships only with Windows and is absent from Linux, CI and containers. Other Chinese scripts and Korean fail until a font is pinned for them. The fonts (about 27 MB, SIL Open Font License) are downloaded from the upstream Noto repositories on first use, checked against pinned SHA-256 hashes, and kept in `~/.cache/devkit/fonts` (`%LOCALAPPDATA%\devkit\fonts` on Windows). Set `DEVKIT_FONTS_DIR` to use another folder, such as a CI cache, and run `devkit-store-hero --fetch-fonts` to fill it without drawing anything. System fonts are never used, so a machine's installed fonts cannot change a hero.
+
+Rendering uses `@resvg/resvg-js`, found the same way as for [icons](#icons), including `DEVKIT_ICONS_RENDERER_DIR`. `--check` draws every hero in memory and compares its pixels with the committed file, so it needs the same renderer version and the fonts, but not Docker. It also fails on a hero file for a locale the listing no longer has, which a plain run only names. `--assets <dir>` reads a store-assets folder other than `store-assets/` at the repo root.
+
+The renderer and fonts are pinned so that `--check` redraws the same pixels anywhere, but that is so far shown only on Linux x64 (WSL and CI); `check:icons` has relied on the same property for shapes, and a hero adds text, blur and image scaling. Japanese and Chinese line breaks come from the ICU data built into Node, so a Node update that changes ICU can move a break; `--check` then reports the hero, and a plain run redraws it.
+
+Two complete examples, with synthetic captures, are in `docs/examples/store-hero/`.
+
 ### Refusing secrets and oversized files at commit time
 
 `devkit-precommit` is the shared pre-commit check. It refuses staged:
@@ -404,6 +455,7 @@ Host-side tools that need only the database can call `prepareDatabase({ repoRoot
 | `devkit-init [--check]`                                          | write or check the generated dev files; see [Generated dev files](#generated-dev-files)                                                                |
 | `devkit-wait-for-db`                                             | wait until `DATABASE_URL` accepts connections; see [Waiting for the database](#waiting-for-the-database-and-the-vite-server-block)                     |
 | `devkit-icons [--check]`                                         | write or check every icon size from the SVG masters; see [Icons](#icons)                                                                               |
+| `devkit-store-hero [--check] [--assets <dir>]`                   | write or check the generated first Store screenshot in every listing locale; see [Store heroes](#store-heroes)                                         |
 | `devkit-precommit [--allow <path>] [--max-size <n>]`             | refuse staged secrets, keys and oversized files; see [Refusing secrets](#refusing-secrets-and-oversized-files-at-commit-time)                          |
 
 `devkit` with no command prints the full option list.

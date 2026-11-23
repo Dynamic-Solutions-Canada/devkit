@@ -9,9 +9,9 @@
  * icons install it; its version must be pinned exactly, because `--check` compares bytes.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import path from 'node:path'
 
+import { loadRenderer as loadSharedRenderer } from '../resvg.mjs'
 import { targetEntries } from './entries.mjs'
 import { packIco } from './ico.mjs'
 import { supersededFiles } from './superseded.mjs'
@@ -169,34 +169,11 @@ function entryMasters(root, shared, overrides, label) {
 }
 
 /**
- * Loads resvg, so devkit itself never carries the native module.
- *
- * By default it comes from the repo being generated. `DEVKIT_ICONS_RENDERER_DIR` names another
- * place instead, for repos with no `node_modules` of their own (the Windows repos run this from
- * winui-app-kit's tools folder): either a folder containing `node_modules/@resvg/resvg-js`, or
- * the package folder itself.
+ * Loads resvg from the repo, or from `DEVKIT_ICONS_RENDERER_DIR` (see `../resvg.mjs`), so
+ * devkit itself never carries the native module.
  */
 export function loadRenderer(root, env = process.env) {
-  const rendererDir = env.DEVKIT_ICONS_RENDERER_DIR?.trim()
-  const from = rendererDir ? path.resolve(rendererDir) : root
-  const require = createRequire(path.join(from, 'package.json'))
-
-  try {
-    if (rendererDir && isRendererPackage(from)) return require(from).Resvg
-    return require('@resvg/resvg-js').Resvg
-  } catch {
-    const where = rendererDir
-      ? `DEVKIT_ICONS_RENDERER_DIR (${from}) holds neither node_modules/@resvg/resvg-js nor the package itself`
-      : 'install @resvg/resvg-js in this repo (pinned exactly), or set DEVKIT_ICONS_RENDERER_DIR'
-    throw new Error(`devkit-icons: ${where}`)
-  }
-}
-
-/** True when `dir` is the `@resvg/resvg-js` package folder itself. */
-function isRendererPackage(dir) {
-  const manifest = path.join(dir, 'package.json')
-  if (!existsSync(manifest)) return false
-  return JSON.parse(readFileSync(manifest, 'utf8')).name === '@resvg/resvg-js'
+  return loadSharedRenderer(root, env, 'devkit-icons')
 }
 
 /** Every output the repo's config asks for, generated exports first. */

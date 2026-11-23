@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "locales": {
+    "en-US": {
+      "title": "Sample App",
+      "heroHeadline": "Your whole library, organised for you.",
+      "heroSubline": "Sorted by date and place as you add things. Works offline."
+    },
+    "zh-CN": {
+      "title": "Sample App",
+      "heroHeadline": "整个资料库，自动为你整理。",
+      "heroSubline": "添加内容时按日期和地点排序。可离线使用。"
+    }
+  }
+}

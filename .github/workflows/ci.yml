@@ -29,6 +29,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The store hero render tests need devkit-store-hero's pinned fonts (about 27 MB); without
+      # them they skip. The key changes whenever the pinned list does.
+      - name: Cache the store hero fonts
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/devkit/fonts
+          key: devkit-fonts-${{ hashFiles('src/store-hero/fonts.mjs') }}
+
+      - name: Fetch the store hero fonts
+        run: node bin/devkit-store-hero.mjs --fetch-fonts
+
       - name: Validate
         run: npm run validate
 
