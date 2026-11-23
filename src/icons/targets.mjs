@@ -29,6 +29,13 @@ const WINDOWS_TILES = {
   Square71x71Logo: [71, 71],
   Square310x310Logo: [310, 310],
 }
+/**
+ * Xbox Game Bar reads a widget's icons from `Icons/` in the widget's PublicFolder, named
+ * `icon.targetsize-<size>.png`, with an optional `icon.light.targetsize-<size>.png` set for its light
+ * theme (Microsoft's "Using custom widget icons in Game Bar").
+ */
+const GAME_BAR_SIZES = [16, 20, 24, 32, 44, 256]
+
 /** The light-taskbar form is the monochrome master drawn dark (ASSET-5). */
 const LIGHT_TASKBAR_COLOR = '#1F1F1F'
 
@@ -121,8 +128,15 @@ export function webOutputs(
   ]
 }
 
-/** ASSET-5: MSIX logos at every scale, taskbar target sizes in three forms, and the `.ico`. */
-export function windowsOutputs(masters, { images, ico, tiles = false }) {
+/**
+ * ASSET-5: MSIX logos at every scale, taskbar target sizes in three forms, and the `.ico`. With
+ * `gameBarIcons`, also an Xbox Game Bar widget's icon set in that folder: the full icon for Game Bar's
+ * dark theme and the light-taskbar form for its light theme.
+ */
+export function windowsOutputs(
+  masters,
+  { images, ico, tiles = false, gameBarIcons },
+) {
   const icon = masters['icon.svg']
   const light = recolour(
     need(masters, 'icon-mono.svg', 'windows'),
@@ -169,6 +183,22 @@ export function windowsOutputs(masters, { images, ico, tiles = false }) {
     path: ico.replace(/\.ico$/, '.png'),
     svg: sized(icon, 256, 256),
   })
+
+  if (gameBarIcons !== undefined) {
+    for (const size of GAME_BAR_SIZES) {
+      outputs.push({
+        path: path.posix.join(gameBarIcons, `icon.targetsize-${size}.png`),
+        svg: sized(icon, size, size),
+      })
+      outputs.push({
+        path: path.posix.join(
+          gameBarIcons,
+          `icon.light.targetsize-${size}.png`,
+        ),
+        svg: sized(light, size, size),
+      })
+    }
+  }
   return outputs
 }
 

@@ -179,6 +179,72 @@ test('Windows images stay transparent, opaque icons sit on the background, and t
   )
 })
 
+test('gameBarIcons writes an Xbox Game Bar widget icon set, dark and light', (t) => {
+  const config = {
+    targets: {
+      windows: {
+        images: 'AppMSIX/Images',
+        ico: 'App/Resources/App.ico',
+        gameBarIcons: 'AppMSIX/Widget/Icons',
+      },
+    },
+  }
+  const root = repo(t, { config })
+  const written = writeIcons(root)
+  const widget = written.filter((file) => file.startsWith('AppMSIX/Widget/'))
+
+  // Six sizes, each in the full and light forms.
+  assert.equal(widget.length, 12)
+  for (const size of [16, 20, 24, 32, 44, 256]) {
+    for (const name of [
+      `icon.targetsize-${size}.png`,
+      `icon.light.targetsize-${size}.png`,
+    ]) {
+      const file = `AppMSIX/Widget/Icons/${name}`
+      assert.ok(written.includes(file), file)
+      assert.deepEqual(
+        pngSize(readFileSync(path.join(root, file))),
+        [size, size],
+        file,
+      )
+    }
+  }
+
+  const outputs = Object.fromEntries(
+    planIcons(root).map((output) => [output.path, output]),
+  )
+  assert.deepEqual(
+    pixel(outputs['AppMSIX/Widget/Icons/icon.targetsize-44.png'], 22, 22).slice(
+      0,
+      3,
+    ),
+    [0xf7, 0xb7, 0x33],
+  )
+  const light = pixel(
+    outputs['AppMSIX/Widget/Icons/icon.light.targetsize-44.png'],
+    22,
+    22,
+  )
+  assert.ok(light[0] < 0x40 && light[3] === 255, `light form is dark: ${light}`)
+
+  // Without the option, a Windows target writes no widget icons.
+  assert.ok(
+    !planIcons(repo(t)).some((output) => output.path.includes('icon.light.')),
+  )
+})
+
+test('gameBarIcons must be a path', (t) => {
+  const config = {
+    targets: {
+      windows: { images: 'I', ico: 'A.ico', gameBarIcons: true },
+    },
+  }
+  assert.throws(
+    () => planIcons(repo(t, { config })),
+    /targets\.windows\.gameBarIcons must be a path/,
+  )
+})
+
 test('Android gets adaptive vector XML with the art in the central 66 dp', (t) => {
   const root = repo(t)
   writeIcons(root)

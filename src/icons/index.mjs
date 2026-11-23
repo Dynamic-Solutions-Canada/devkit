@@ -97,6 +97,12 @@ function validateEntry(name, entry, label) {
     }
   }
 
+  if (name === 'windows' && entry.gameBarIcons !== undefined) {
+    if (typeof entry.gameBarIcons !== 'string') {
+      throw new Error(`devkit-icons: ${label}.gameBarIcons must be a path`)
+    }
+  }
+
   if (name === 'android' && entry.playPath !== undefined) {
     if (typeof entry.playPath !== 'string') {
       throw new Error(`devkit-icons: ${label}.playPath must be a path`)
