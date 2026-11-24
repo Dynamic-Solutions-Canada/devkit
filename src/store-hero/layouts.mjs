@@ -9,6 +9,9 @@
  *
  * Both keep the headline inside the top two-thirds (Microsoft's guidance for overlays) and fail
  * rather than shrink text below a size that still reads on a 320 x 180 Store search card.
+ *
+ * A split hero may also have a text-free variant (`textFreeLayout`): its background and window
+ * with no text, for a web page that sets the app's name and headline in its own HTML.
  */
 import {
   CANVAS_HEIGHT,
@@ -71,6 +74,7 @@ export const GEOMETRY = {
     },
     ghost: { left: 640, top: 250, bleed: 160, maxScale: 1.25, opacity: 0.42 },
   },
+  textFree: { margin: 64, maxScale: 2 },
 }
 
 /** The bottom margin every text block keeps from the canvas edge. */
@@ -205,53 +209,58 @@ function bottomFade(context, { y, height }) {
   )
 }
 
+/** The brand panel's gradient (`url(#panel)`): the primary colour darkened toward night. */
+function panelGradient(primary) {
+  return `<linearGradient id="panel" x1="0" y1="0" x2="0.55" y2="1"><stop offset="0" stop-color="${mix(primary, NIGHT, 0.4)}"/><stop offset="1" stop-color="${mix(primary, NIGHT, 0.12)}"/></linearGradient>`
+}
+
+/** A soft glow of the accent colour toward the bottom-right corner (`url(#tint-b)`). */
+function accentGlow(accent) {
+  return `<radialGradient id="tint-b" cx="0.88" cy="0.9" r="0.6"><stop offset="0" stop-color="${accent}" stop-opacity="0.3"/><stop offset="0.7" stop-color="${accent}" stop-opacity="0"/></radialGradient>`
+}
+
 /**
- * The split layout. The window is scaled to fit the space right of the panel (never above
- * `maxScale` times its logical size) and centred there, a little above the middle so its top,
- * where flyouts put their title and main control, sits in the top two-thirds.
+ * The split layout's background: the blurred capture, then the brand tint over it. It also defines
+ * the panel gradient the layout draws later.
  */
-export function splitLayout(job, output, context) {
-  const g = GEOMETRY.split
+function brandBackdrop(job, context) {
   const { primary, accent } = job
-  const parts = []
-
-  // Background: the blurred capture, then the brand tint over it.
-  parts.push(
-    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="${NIGHT}"/>`,
-  )
-  parts.push(backdrop(job, context))
-  parts.push(
+  return (
+    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="${NIGHT}"/>` +
+    backdrop(job, context) +
     '<defs>' +
-      `<radialGradient id="tint-a" cx="0.2" cy="0.18" r="0.8"><stop offset="0" stop-color="${primary}" stop-opacity="0.55"/><stop offset="0.72" stop-color="${primary}" stop-opacity="0"/></radialGradient>` +
-      `<radialGradient id="tint-b" cx="0.88" cy="0.9" r="0.6"><stop offset="0" stop-color="${accent}" stop-opacity="0.3"/><stop offset="0.7" stop-color="${accent}" stop-opacity="0"/></radialGradient>` +
-      `<linearGradient id="panel" x1="0" y1="0" x2="0.55" y2="1"><stop offset="0" stop-color="${mix(primary, NIGHT, 0.4)}"/><stop offset="1" stop-color="${mix(primary, NIGHT, 0.12)}"/></linearGradient>` +
-      '<filter id="panel-shadow" x="-10%" y="-10%" width="130%" height="120%"><feGaussianBlur stdDeviation="30"/></filter>' +
-      '</defs>',
+    `<radialGradient id="tint-a" cx="0.2" cy="0.18" r="0.8"><stop offset="0" stop-color="${primary}" stop-opacity="0.55"/><stop offset="0.72" stop-color="${primary}" stop-opacity="0"/></radialGradient>` +
+    accentGlow(accent) +
+    panelGradient(primary) +
+    '<filter id="panel-shadow" x="-10%" y="-10%" width="130%" height="120%"><feGaussianBlur stdDeviation="30"/></filter>' +
+    '</defs>' +
+    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#tint-a)"/>` +
+    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#tint-b)"/>`
   )
-  parts.push(
-    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#tint-a)"/>`,
-  )
-  parts.push(
-    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#tint-b)"/>`,
-  )
+}
 
-  // The enlarged window, whole (or cut at the bottom and faded), in the space right of the panel.
-  const area = {
-    left: g.panelWidth + g.window.gap,
-    width: context.width - g.panelWidth - g.window.gap * 2,
-    height: CANVAS_HEIGHT - g.window.margin * 2,
-  }
+/**
+ * The app's window, whole (or cut at the bottom and faded), enlarged to fit `area` and centred in
+ * it, with its shadow and outline. The scale never exceeds `maxScale` times the window's logical
+ * size, and how far the capture is enlarged is noted for the soft-capture advice.
+ *
+ * @param {{ left: number, width: number, height: number }} area where the window may go; it is
+ *   placed `margin` units from the top at the least
+ * @param {{ margin: number, maxScale: number, lift: number }} fit `lift` raises the window above
+ *   the vertical centre by that many units
+ */
+function enlargedWindow(job, context, area, { margin, maxScale, lift }) {
   const [, , regionWidth, regionHeight] = job.capture.region
   const logical = job.capture.scale / 100
   const scale = Math.min(
-    g.window.maxScale,
+    maxScale,
     area.width / (regionWidth / logical),
     area.height / (regionHeight / logical),
   )
   const shownWidth = (regionWidth / logical) * scale
   const shownHeight = (regionHeight / logical) * scale
   const x = area.left + (area.width - shownWidth) / 2
-  const y = Math.max(g.window.margin, (CANVAS_HEIGHT - shownHeight) / 2 - 40)
+  const y = Math.max(margin, (CANVAS_HEIGHT - shownHeight) / 2 - lift)
   const window = windowImage({
     capture: job.capture,
     image: context.captureImage,
@@ -268,13 +277,40 @@ export function splitLayout(job, output, context) {
     radius: window.radius,
   })
   const outline = `<rect x="${round(x)}" y="${round(y)}" width="${round(window.width)}" height="${round(window.height)}" rx="${round(window.radius)}" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="1"/>`
-  if (job.capture.fade === 'bottom') {
-    parts.push(bottomFade(context, { y, height: window.height }))
-    parts.push(`<g mask="url(#cut-fade)">${shadow}${window.svg}${outline}</g>`)
-  } else {
-    parts.push(shadow, window.svg, outline)
-  }
   context.notes.push({ upscale: (scale * context.pixelsPerUnit) / logical })
+
+  if (job.capture.fade === 'bottom') {
+    return (
+      bottomFade(context, { y, height: window.height }) +
+      `<g mask="url(#cut-fade)">${shadow}${window.svg}${outline}</g>`
+    )
+  }
+  return shadow + window.svg + outline
+}
+
+/**
+ * The split layout. The window is scaled to fit the space right of the panel (never above
+ * `maxScale` times its logical size) and centred there, a little above the middle so its top,
+ * where flyouts put their title and main control, sits in the top two-thirds.
+ */
+export function splitLayout(job, output, context) {
+  const g = GEOMETRY.split
+  const { primary, accent } = job
+  const parts = [brandBackdrop(job, context)]
+
+  // The enlarged window, whole (or cut at the bottom and faded), in the space right of the panel.
+  parts.push(
+    enlargedWindow(
+      job,
+      context,
+      {
+        left: g.panelWidth + g.window.gap,
+        width: context.width - g.panelWidth - g.window.gap * 2,
+        height: CANVAS_HEIGHT - g.window.margin * 2,
+      },
+      { margin: g.window.margin, maxScale: g.window.maxScale, lift: 40 },
+    ),
+  )
 
   // The brand panel and its copy, drawn last so the panel's shadow falls on the backdrop.
   parts.push(
@@ -432,6 +468,45 @@ export function brandCardLayout(job, output, context) {
   )
 
   return parts.join('')
+}
+
+/**
+ * The split hero's brand panel gradient across the whole canvas, with the accent glow, so the
+ * text-free variant reads as the same brand colour as the hero's panel.
+ */
+function brandPanelBackground(job, context) {
+  const { primary, accent } = job
+  return (
+    '<defs>' +
+    panelGradient(primary) +
+    accentGlow(accent) +
+    '</defs>' +
+    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#panel)"/>` +
+    `<rect width="${round(context.width)}" height="${CANVAS_HEIGHT}" fill="url(#tint-b)"/>`
+  )
+}
+
+/**
+ * The text-free variant of the split layout: the hero's brand colour and enlarged window, with no
+ * icon, name or text, for pages that set their own headline above the image. The panel's gradient
+ * fills the canvas and the window is centred on it, so a wide window has room to be drawn larger,
+ * which keeps the UI legible when the image is shown small, as on a phone.
+ */
+export function textFreeLayout(job, context) {
+  const g = GEOMETRY.textFree
+  return (
+    brandPanelBackground(job, context) +
+    enlargedWindow(
+      job,
+      context,
+      {
+        left: g.margin,
+        width: context.width - g.margin * 2,
+        height: CANVAS_HEIGHT - g.margin * 2,
+      },
+      { margin: g.margin, maxScale: g.maxScale, lift: 0 },
+    )
+  )
 }
 
 export const LAYOUT_BUILDERS = {

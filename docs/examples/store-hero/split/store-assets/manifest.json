@@ -8,7 +8,8 @@
         "layout": "split",
         "icon": "assets/brand/icon.svg",
         "primary": "#2563EB",
-        "accent": "#10B981"
+        "accent": "#10B981",
+        "textFreeFile": "text-free/00-hero-dark.png"
       },
       "caption": "Every room's lights from the tray.",
       "alt": "Sample App's tray flyout, enlarged beside the headline: a card per room with an on switch and a level slider."
