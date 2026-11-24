@@ -31,7 +31,7 @@ import {
   orphanedHeroes,
   writeHeroes,
 } from '../src/store-hero/index.mjs'
-import { splitLayout } from '../src/store-hero/layouts.mjs'
+import { splitLayout, textFreeLayout } from '../src/store-hero/layouts.mjs'
 import {
   encodeRgbPng,
   pngHeader,
@@ -505,6 +505,84 @@ test('fade: "bottom" lets a split crop cut only the window\'s bottom, and fades 
   )
 })
 
+test('textFreeFile adds one text-free output after the locales, for the split layout only', (t) => {
+  const withHero = (extra) => ({
+    ...HERO_ENTRY,
+    hero: { ...HERO_ENTRY.hero, ...extra },
+  })
+
+  const [job] = loadHeroJobs(
+    repo(t, {
+      entry: withHero({ textFreeFile: 'text-free/00-hero-dark.png' }),
+    }),
+  )
+  assert.deepEqual(job.outputs.at(-1), {
+    textFree: true,
+    path: path.join('store-assets/microsoft/text-free/00-hero-dark.png'),
+  })
+  assert.equal(job.outputs.length, 3, 'two locales, then the text-free image')
+
+  const refused = [
+    [
+      withHero({ textFreeFile: 'text-free/{locale}.png' }),
+      /textFreeFile must be a .png path without \{locale\}/,
+    ],
+    [
+      withHero({ textFreeFile: 'text-free/hero.jpg' }),
+      /textFreeFile must be a .png path/,
+    ],
+    [
+      withHero({ textFreeFile: 'screenshots/en-US/00-hero-dark.png' }),
+      /is also a locale's hero/,
+    ],
+    [
+      withHero({ layout: 'brand-card', textFreeFile: 'text-free/hero.png' }),
+      /textFreeFile applies only to the split layout/,
+    ],
+  ]
+  for (const [entry, message] of refused) {
+    assert.throws(() => loadHeroJobs(repo(t, { entry })), message)
+  }
+})
+
+test('the text-free layout draws the window centred on the brand gradient, with no text or icon', (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'devkit-store-hero-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  write(root, 'icon.svg', ICON)
+  const job = {
+    primary: '#2563EB',
+    accent: '#10B981',
+    icon: path.join(root, 'icon.svg'),
+    capture: {
+      width: 1920,
+      height: 1080,
+      scale: 100,
+      region: [WINDOW.x, WINDOW.y, 840, 380],
+      fade: null,
+    },
+  }
+  const context = {
+    width: 1366,
+    pixelsPerUnit: 1,
+    captureImage: 'data:image/png;base64,',
+    notes: [],
+  }
+
+  const svg = textFreeLayout(job, context)
+  assert.doesNotMatch(svg, /<text/)
+  assert.doesNotMatch(svg, /id="icon"/)
+  assert.match(svg, /fill="url\(#panel\)"/)
+
+  // The window has the whole canvas less its margins, so a wide one is larger than in the split.
+  const [, x, y, width, height] =
+    /<clipPath id="window"><rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/
+      .exec(svg)
+      .map(Number)
+  assert.ok(Math.abs(x + width / 2 - 683) < 0.01, 'centred across')
+  assert.ok(Math.abs(y + height / 2 - 384) < 0.01, 'centred down')
+  assert.ok(width > 1366 - 600 - 96, 'wider than the split leaves room for')
+})
+
 test('loadHeroJobs checks the entry itself', (t) => {
   const cases = [
     [
@@ -642,6 +720,40 @@ test(
         reason: 'differs from its inputs',
       },
     ])
+  },
+)
+
+test(
+  'writeHeroes draws the text-free image, and checkHeroes keeps it current',
+  needsFonts,
+  async (t) => {
+    const entry = {
+      ...HERO_ENTRY,
+      hero: { ...HERO_ENTRY.hero, textFreeFile: 'text-free/00-hero-dark.png' },
+    }
+    const root = repo(t, { entry })
+    const textFree = path.join(
+      'store-assets/microsoft/text-free/00-hero-dark.png',
+    )
+    const { written } = await writeHeroes(root)
+    assert.deepEqual(written.at(-1), textFree)
+    assert.deepEqual(pngHeader(readFileSync(path.join(root, textFree))), {
+      width: 1366,
+      height: 768,
+      depth: 8,
+      colour: 2,
+    })
+    assert.deepEqual(await checkHeroes(root), [])
+    assert.deepEqual(orphanedHeroes(root), [])
+
+    // The text-free image follows the brand colours like the heroes do.
+    const manifestFile = path.join(root, 'store-assets/manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
+    manifest.microsoft[0].hero.primary = '#DC2626'
+    writeFileSync(manifestFile, JSON.stringify(manifest))
+    assert.ok(
+      (await checkHeroes(root)).some(({ path: file }) => file === textFree),
+    )
   },
 )
 

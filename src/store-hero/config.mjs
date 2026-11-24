@@ -200,6 +200,22 @@ function checkHeroBlock(root, entry, label) {
     if (hero.crop === undefined)
       fail(`${label}.hero.fade needs a crop saying where the window is cut`)
   }
+
+  // The text-free variant is one image for every locale, so its path has no {locale}.
+  if (hero.textFreeFile !== undefined) {
+    const file = hero.textFreeFile
+    if (
+      typeof file !== 'string' ||
+      !file.endsWith('.png') ||
+      file.includes(LOCALE_TOKEN)
+    ) {
+      fail(
+        `${label}.hero.textFreeFile must be a .png path without ${LOCALE_TOKEN}, since one image serves every locale`,
+      )
+    }
+    if (hero.layout !== 'split')
+      fail(`${label}.hero.textFreeFile applies only to the split layout`)
+  }
 }
 
 /**
@@ -263,7 +279,8 @@ export function heroLocales(listings, layout, label) {
  *
  * @param {string} root the repo root; `hero.icon` is relative to it
  * @param {string} assetsDir the store-assets folder, relative to `root`
- * @returns {Array<object>} jobs with their layout, size, colours, icon, capture and locales
+ * @returns {Array<object>} jobs with their layout, size, colours, icon, capture and outputs: one
+ *   per locale, then the text-free variant (`textFree: true`, no locale) when one is configured
  */
 export function loadHeroJobs(root, assetsDir = DEFAULT_ASSETS_DIR) {
   const assets = path.join(root, assetsDir)
@@ -307,6 +324,24 @@ export function loadHeroJobs(root, assetsDir = DEFAULT_ASSETS_DIR) {
       typeof entry.source === 'string'
         ? resolveCapture(assets, entry.source, hero.crop, label, hero.fade)
         : null
+    const outputs = locales.map((text) => ({
+      ...text,
+      path: path.join(
+        assetsDir,
+        store,
+        entry.file.replaceAll(LOCALE_TOKEN, text.locale),
+      ),
+    }))
+    if (hero.textFreeFile !== undefined) {
+      const textFreePath = path.join(assetsDir, store, hero.textFreeFile)
+      if (outputs.some((output) => output.path === textFreePath)) {
+        fail(
+          `${label}.hero.textFreeFile (${hero.textFreeFile}) is also a locale's hero; give it its own name`,
+        )
+      }
+      outputs.push({ textFree: true, path: textFreePath })
+    }
+
     jobs.push({
       store,
       layout: hero.layout,
@@ -315,14 +350,7 @@ export function loadHeroJobs(root, assetsDir = DEFAULT_ASSETS_DIR) {
       accent: hero.accent.toUpperCase(),
       icon: path.join(root, hero.icon),
       capture,
-      outputs: locales.map((text) => ({
-        ...text,
-        path: path.join(
-          assetsDir,
-          store,
-          entry.file.replaceAll(LOCALE_TOKEN, text.locale),
-        ),
-      })),
+      outputs,
       pattern: path.join(assetsDir, store, entry.file),
     })
   }

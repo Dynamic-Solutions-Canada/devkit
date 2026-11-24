@@ -4,7 +4,7 @@
  */
 import { CANVAS_HEIGHT, dataUri, escapeXml, round } from './draw.mjs'
 import { fontFamily } from './fonts.mjs'
-import { LAYOUT_BUILDERS } from './layouts.mjs'
+import { LAYOUT_BUILDERS, textFreeLayout } from './layouts.mjs'
 import { rgbRows } from './png.mjs'
 
 /**
@@ -35,14 +35,15 @@ export function createRenderer(Resvg, fontFiles) {
   }
 
   /**
-   * Draws one locale's hero.
+   * Draws one locale's hero, or the job's text-free variant when `output.textFree` is set.
    *
    * @returns {{ rows: Buffer, notes: Array<{ upscale: number }> }} PNG rows (see `rgbRows`) and
    *   facts worth reporting, such as how far the capture was enlarged
    */
   function render(job, output) {
     const { width, height } = job.size
-    const family = fontFamily(output.locale)
+    // The text-free variant has no locale and draws no text, so any family will do.
+    const family = output.textFree ? 'Noto Sans' : fontFamily(output.locale)
     const context = {
       width: (CANVAS_HEIGHT * width) / height,
       pixelsPerUnit: height / CANVAS_HEIGHT,
@@ -53,7 +54,9 @@ export function createRenderer(Resvg, fontFiles) {
       notes: [],
     }
 
-    const body = LAYOUT_BUILDERS[job.layout](job, output, context)
+    const body = output.textFree
+      ? textFreeLayout(job, context)
+      : LAYOUT_BUILDERS[job.layout](job, output, context)
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${round(context.width)} ${CANVAS_HEIGHT}">${body}</svg>`
     const image = new Resvg(svg, options).render()
     return {
