@@ -229,6 +229,49 @@ test('fitText steps down to a size that fits, and gives up below the smallest', 
   assert.equal(tooTall, null)
 })
 
+test('fitText goes a little smaller to keep a word from standing alone on a line', () => {
+  const text = 'Every printer, every project, on every device.'
+  const options = {
+    locale: 'en-US',
+    sizes: [60, 58, 56, 54, 52, 50, 48],
+    maxLines: 5,
+    measureAt: monospace,
+  }
+
+  // At 60 a line holds 15 characters: "Every printer, / every project, / on every / device."
+  // At 56 it holds 16, so the last line keeps its words together.
+  const fitted = fitText(text, { ...options, maxWidth: 450 })
+  assert.deepEqual(fitted, {
+    size: 56,
+    lines: ['Every printer,', 'every project,', 'on every device.'],
+  })
+
+  // At 420 the same break needs 52, more than 10 percent below 60, so the larger size stands.
+  const bounded = fitText(text, { ...options, maxWidth: 420 })
+  assert.equal(bounded.size, 60)
+  assert.deepEqual(bounded.lines, [
+    'Every printer,',
+    'every project,',
+    'on every',
+    'device.',
+  ])
+})
+
+test('fitText keeps the largest size when no word is alone, or a one-word line is forced', () => {
+  const options = {
+    locale: 'en-US',
+    sizes: [60, 58, 56],
+    maxWidth: 1000,
+    maxLines: 4,
+    measureAt: monospace,
+  }
+  assert.equal(fitText('Set up in one click.', options).size, 60)
+  assert.deepEqual(fitText('Ready.\nSet up in one click.', options), {
+    size: 60,
+    lines: ['Ready.', 'Set up in one click.'],
+  })
+})
+
 // --- PNG -------------------------------------------------------------------------------------
 
 test('PNG rows round-trip as 8-bit RGB with unfiltered rows, and other PNGs are refused', () => {
