@@ -75,6 +75,8 @@ function lineText(units) {
 /**
  * Greedy line breaking: as many units per line as fit in `width`. A unit wider than `width` gets
  * a line of its own and overflows it; the caller sees that in the measured widths.
+ *
+ * @returns {Array<Array<{ text: string, spaceAfter: boolean }>>} the units on each line
  */
 function greedyLines(units, width, measure) {
   const lines = []
@@ -82,19 +84,21 @@ function greedyLines(units, width, measure) {
   for (const unit of units) {
     const candidate = [...current, unit]
     if (current.length > 0 && measure(lineText(candidate)) > width) {
-      lines.push(lineText(current))
+      lines.push(current)
       current = [unit]
     } else {
       current = candidate
     }
   }
-  if (current.length > 0) lines.push(lineText(current))
+  if (current.length > 0) lines.push(current)
   return lines
 }
 
 /**
  * Breaks one paragraph into balanced lines no wider than `maxWidth`: the fewest lines greedy
  * breaking needs, then the narrowest width that still needs no more, so the lines come out even.
+ *
+ * @returns {Array<Array<{ text: string, spaceAfter: boolean }>>} the units on each line
  */
 function balancedLines(units, maxWidth, measure) {
   const lines = greedyLines(units, maxWidth, measure)
@@ -106,7 +110,7 @@ function balancedLines(units, maxWidth, measure) {
   while (low <= high) {
     const width = Math.floor((low + high) / 2)
     const attempt = greedyLines(units, width, measure)
-    const overflows = attempt.some((line) => measure(line) > width)
+    const overflows = attempt.some((line) => measure(lineText(line)) > width)
     if (attempt.length <= lines.length && !overflows) {
       best = attempt
       high = width - 1
@@ -118,6 +122,26 @@ function balancedLines(units, maxWidth, measure) {
 }
 
 /**
+ * Wraps `text` into balanced lines, keeping each line's units. A `\n` in the text forces a break.
+ *
+ * @returns {{ lines: string[], loneWords: number }} the lines, and how many of them hold a single
+ *   word from a paragraph of several (a line such as "every" between two fuller ones)
+ */
+function wrapParagraphs(text, { locale, maxWidth, measure }) {
+  const lines = []
+  let loneWords = 0
+  for (const paragraph of text.split('\n')) {
+    const units = breakUnits(paragraph.trim(), locale)
+    for (const line of balancedLines(units, maxWidth, measure)) {
+      lines.push(lineText(line))
+      // A one-word paragraph has no other way to break, so only count words that were split off.
+      if (line.length === 1 && units.length > 1) loneWords += 1
+    }
+  }
+  return { lines, loneWords }
+}
+
+/**
  * Wraps `text` into balanced lines. A `\n` in the text forces a break, for a headline whose
  * phrasing matters more than balance.
  *
@@ -125,18 +149,26 @@ function balancedLines(units, maxWidth, measure) {
  * @param {{ locale: string, maxWidth: number, measure: (line: string) => number }} options
  * @returns {string[]}
  */
-export function wrapText(text, { locale, maxWidth, measure }) {
-  return text
-    .split('\n')
-    .flatMap((paragraph) =>
-      balancedLines(breakUnits(paragraph.trim(), locale), maxWidth, measure),
-    )
+export function wrapText(text, options) {
+  return wrapParagraphs(text, options).lines
 }
+
+/**
+ * How far below the largest size that fits `fitText` may go to avoid a lone word, as a fraction
+ * of that size. Small enough that the text still reads as the same size; large enough to pull a
+ * word that only just overflows back onto its line.
+ */
+export const LONE_WORD_SHRINK = 0.1
 
 /**
  * Finds the largest font size, from `sizes` (largest first), at which `text` wraps into lines
  * that each fit `maxWidth`, number at most `maxLines`, and, with `lineHeight` (a multiple of the
  * size), stack no taller than `maxHeight`.
+ *
+ * When that size leaves a word alone on a line (for example "Every printer, / every / project,
+ * on / every device."), it tries the sizes up to `LONE_WORD_SHRINK` smaller and takes the largest
+ * that leaves fewer lone words, so the headline breaks at phrases rather than one word short. If
+ * none does, the largest fitting size stands.
  *
  * @param {string} text
  * @param {{ locale: string, sizes: number[], maxWidth: number, maxLines: number,
@@ -156,15 +188,37 @@ export function fitText(
     measureAt,
   },
 ) {
-  for (const size of sizes) {
+  /** The wrap at `size`, or null when it breaks one of the limits. */
+  function fitAt(size) {
     const measure = measureAt(size)
-    const lines = wrapText(text, { locale, maxWidth, measure })
+    const wrapped = wrapParagraphs(text, { locale, maxWidth, measure })
+    const { lines } = wrapped
     const fitsLines =
       lines.length <= maxLines && lines.length * size * lineHeight <= maxHeight
-    if (fitsLines && lines.every((line) => measure(line) <= maxWidth))
-      return { size, lines }
+    const fitsWidth = lines.every((line) => measure(line) <= maxWidth)
+    return fitsLines && fitsWidth ? { size, ...wrapped } : null
   }
-  return null
+
+  // The largest size that fits at all.
+  let largestIndex = -1
+  let best = null
+  for (const [index, size] of sizes.entries()) {
+    best = fitAt(size)
+    if (best) {
+      largestIndex = index
+      break
+    }
+  }
+  if (!best) return null
+
+  // A lone word: look a little smaller for a size that keeps it with its neighbours.
+  const floor = best.size * (1 - LONE_WORD_SHRINK)
+  for (const size of sizes.slice(largestIndex + 1)) {
+    if (best.loneWords === 0 || size < floor) break
+    const candidate = fitAt(size)
+    if (candidate && candidate.loneWords < best.loneWords) best = candidate
+  }
+  return { size: best.size, lines: best.lines }
 }
 
 /** Font sizes from `largest` down to `smallest` in steps of 2, for `fitText`. */
