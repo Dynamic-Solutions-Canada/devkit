@@ -247,8 +247,11 @@ test('fitText goes a little smaller to keep a word from standing alone on a line
     lines: ['Every printer,', 'every project,', 'on every device.'],
   })
 
-  // At 420 the same break needs 52, more than 10 percent below 60, so the larger size stands.
-  const bounded = fitText(text, { ...options, maxWidth: 420 })
+  // At 420 the same break needs 52, 13 percent below 60: within the 15 percent limit.
+  assert.equal(fitText(text, { ...options, maxWidth: 420 }).size, 52)
+
+  // With 50 the next size down, more than 15 percent below 60, the larger size stands.
+  const bounded = fitText(text, { ...options, sizes: [60, 50], maxWidth: 420 })
   assert.equal(bounded.size, 60)
   assert.deepEqual(bounded.lines, [
     'Every printer,',
@@ -1042,7 +1045,7 @@ test(
 )
 
 test(
-  'devkit-store-hero --check warns, without failing, about a locale drawn from the en-US capture',
+  'a plain run previews a missing locale capture from en-US, and --check fails on it',
   needsFonts,
   async (t) => {
     const entry = {
@@ -1068,15 +1071,14 @@ test(
 
     const written = run()
     assert.equal(written.status, 0)
-    assert.match(written.stderr, /warning: .*draw the en-US one/)
+    assert.match(written.stderr, /warning: .*previews drawn from the en-US one/)
 
     const checked = run('--check')
-    assert.equal(checked.status, 0)
+    assert.equal(checked.status, 1)
     assert.match(
       checked.stderr,
       /microsoft ja-JP: raw\/microsoft\/ja-JP\/00-flyout-dark.png is missing/,
     )
-    assert.doesNotMatch(checked.stdout, /every hero matches its inputs$/m)
   },
 )
 

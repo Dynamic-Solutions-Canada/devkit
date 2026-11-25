@@ -115,9 +115,9 @@ export async function checkHeroes(root, options = {}) {
 
 /**
  * Locales whose own capture is missing and whose hero draws the en-US capture instead (a
- * `source` with `{locale}`), as `{ store, locale, source }`. They are not a failure, so an app
- * can localise its captures one locale at a time, but every run names them so an English
- * screenshot never passes unnoticed.
+ * `source` with `{locale}`), as `{ store, locale, source }`. A plain run draws them that way as
+ * a preview while captures are being localised; `--check` fails on them, so an English
+ * screenshot never reaches a translated listing.
  */
 export function captureFallbacks(
   root,

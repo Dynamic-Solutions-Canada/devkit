@@ -258,8 +258,8 @@ function checkHeroBlock(root, entry, label) {
 /**
  * Each output's capture. A `source` without `{locale}` is one capture for every locale. With
  * `{locale}`, each locale draws its own capture (Windows and the app in that language); a locale
- * whose capture is missing falls back to the en-US capture and is listed in `fallbacks`, so the
- * caller can warn instead of letting an English screenshot pass unnoticed. A capture that exists
+ * whose capture is missing falls back to the en-US capture, for a preview, and is listed in
+ * `fallbacks`, which `--check` fails on. A capture that exists
  * without its sidecar is still an error. The text-free image has no language and always uses the
  * en-US capture, since the website it serves is English.
  *

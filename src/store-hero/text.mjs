@@ -275,7 +275,7 @@ export function wrapText(text, options) {
  * of that size. Small enough that the text still reads as the same size; large enough to pull a
  * word that only just overflows back onto its line.
  */
-export const LONE_WORD_SHRINK = 0.1
+export const LONE_WORD_SHRINK = 0.15
 
 /**
  * Finds the largest font size, from `sizes` (largest first), at which `text` wraps into lines
