@@ -121,8 +121,127 @@ function balancedLines(units, maxWidth, measure) {
   return best
 }
 
+/** A unit that ends a sentence: a full stop, question or exclamation mark, then any closers. */
+const SENTENCE_END = /[.!?。！？][)\]}»’”」』】）]*$/u
+
 /**
- * Wraps `text` into balanced lines, keeping each line's units. A `\n` in the text forces a break.
+ * Whether a line ends one sentence and starts another ("anschließen. Der"), which reads worse than
+ * keeping each sentence's words together, even when it avoids a lone word.
+ */
+function straddlesSentences(line) {
+  return line.slice(0, -1).some((unit) => SENTENCE_END.test(unit.text))
+}
+
+/** How many of a paragraph's lines hold one word split off from the others. */
+function countLoneWords(lines, units) {
+  // A one-word paragraph has no other way to break, so only count words that were split off.
+  if (units.length < 2) return 0
+  return lines.filter((line) => line.length === 1).length
+}
+
+/**
+ * How awkward a line is when choosing between breaks: one for a lone word (when the paragraph
+ * has several units, `several`), and one for a line that straddles two sentences.
+ */
+function lineCost(line, several) {
+  const lone = several && line.length === 1 ? 1 : 0
+  return lone + (straddlesSentences(line) ? 1 : 0)
+}
+
+/** The summed `lineCost` of a paragraph's lines. */
+function breakCost(lines, units) {
+  return lines.reduce((sum, line) => sum + lineCost(line, units.length > 1), 0)
+}
+
+/**
+ * `lineCount` lines, broken anywhere that fits `maxWidth`, chosen for the lowest `lineCost`
+ * (lone words, and lines that straddle two sentences) and then the narrowest longest line, so
+ * they stay as even as balancing makes them. Balancing alone takes the narrowest width that keeps
+ * the line count, which can strand the first or last word ("Your / reminders, one / click from
+ * the / Windows tray.") when a wider, still even, break keeps it ("Your reminders, / one click /
+ * from the / Windows tray.").
+ *
+ * A dynamic programme over (lines used, units placed): costs add up and widths take the maximum,
+ * so the lexicographic best for each prefix is the best start for every ending.
+ *
+ * @returns {Array<Array<{ text: string, spaceAfter: boolean }>> | null} the lines, or null when
+ *   no break into that many lines fits
+ */
+function leastAwkwardLines(units, lineCount, maxWidth, measure) {
+  const count = units.length
+  const several = count > 1
+  // best[used][placed] = { cost, widest, breaks } for the first `placed` units on `used` lines.
+  const best = Array.from({ length: lineCount + 1 }, () =>
+    new Array(count + 1).fill(null),
+  )
+  best[0][0] = { cost: 0, widest: 0, breaks: [] }
+
+  for (let used = 1; used <= lineCount; used += 1) {
+    for (let placed = used; placed <= count; placed += 1) {
+      for (let start = used - 1; start < placed; start += 1) {
+        const before = best[used - 1][start]
+        if (!before) continue
+        const line = units.slice(start, placed)
+        const width = measure(lineText(line))
+        if (width > maxWidth) continue
+
+        const cost = before.cost + lineCost(line, several)
+        const widest = Math.max(before.widest, width)
+        const current = best[used][placed]
+        const better =
+          !current ||
+          cost < current.cost ||
+          (cost === current.cost && widest < current.widest)
+        if (better) {
+          best[used][placed] = {
+            cost,
+            widest,
+            breaks: [...before.breaks, placed],
+          }
+        }
+      }
+    }
+  }
+
+  const found = best[lineCount][count]
+  if (!found) return null
+  let start = 0
+  return found.breaks.map((end) => {
+    const line = units.slice(start, end)
+    start = end
+    return line
+  })
+}
+
+/**
+ * Breaks one paragraph: balanced, or, when balancing leaves a word alone, the least awkward break
+ * into the same number of lines (`leastAwkwardLines`) if it has fewer lone words and is less
+ * awkward overall. So a sentence-ending word alone ("anschließen.") is not traded for a line that
+ * runs into the next sentence ("anschließen. Der"), and a paragraph that balances with no lone
+ * word keeps its balanced lines exactly.
+ *
+ * @returns {Array<Array<{ text: string, spaceAfter: boolean }>>} the units on each line
+ */
+function breakParagraph(units, maxWidth, measure) {
+  const balanced = balancedLines(units, maxWidth, measure)
+  if (countLoneWords(balanced, units) === 0) return balanced
+
+  const alternative = leastAwkwardLines(
+    units,
+    balanced.length,
+    maxWidth,
+    measure,
+  )
+  const better =
+    alternative &&
+    countLoneWords(alternative, units) < countLoneWords(balanced, units) &&
+    breakCost(alternative, units) < breakCost(balanced, units)
+  return better ? alternative : balanced
+}
+
+/**
+ * Wraps `text` into lines (see `breakParagraph`), keeping each line's units. A `\n` in the text
+ * forces a break.
  *
  * @returns {{ lines: string[], loneWords: number }} the lines, and how many of them hold a single
  *   word from a paragraph of several (a line such as "every" between two fuller ones)
@@ -132,11 +251,9 @@ function wrapParagraphs(text, { locale, maxWidth, measure }) {
   let loneWords = 0
   for (const paragraph of text.split('\n')) {
     const units = breakUnits(paragraph.trim(), locale)
-    for (const line of balancedLines(units, maxWidth, measure)) {
-      lines.push(lineText(line))
-      // A one-word paragraph has no other way to break, so only count words that were split off.
-      if (line.length === 1 && units.length > 1) loneWords += 1
-    }
+    const wrapped = breakParagraph(units, maxWidth, measure)
+    for (const line of wrapped) lines.push(lineText(line))
+    loneWords += countLoneWords(wrapped, units)
   }
   return { lines, loneWords }
 }
@@ -165,10 +282,12 @@ export const LONE_WORD_SHRINK = 0.1
  * that each fit `maxWidth`, number at most `maxLines`, and, with `lineHeight` (a multiple of the
  * size), stack no taller than `maxHeight`.
  *
- * When that size leaves a word alone on a line (for example "Every printer, / every / project,
- * on / every device."), it tries the sizes up to `LONE_WORD_SHRINK` smaller and takes the largest
- * that leaves fewer lone words, so the headline breaks at phrases rather than one word short. If
- * none does, the largest fitting size stands.
+ * Each size's wrap already avoids a lone word where another break in as many lines can (see
+ * `wrapParagraphs`). When the largest size that fits still leaves one (for example "Every printer,
+ * / every / project, on / every device."), it tries the sizes up to `LONE_WORD_SHRINK` smaller and
+ * takes the largest that leaves fewer lone words (or as many in fewer lines, so a lone word that
+ * no size removes does not keep an extra line), so the headline breaks at phrases rather than one
+ * word short. If none does, the largest fitting size stands.
  *
  * @param {string} text
  * @param {{ locale: string, sizes: number[], maxWidth: number, maxLines: number,
@@ -216,9 +335,19 @@ export function fitText(
   for (const size of sizes.slice(largestIndex + 1)) {
     if (best.loneWords === 0 || size < floor) break
     const candidate = fitAt(size)
-    if (candidate && candidate.loneWords < best.loneWords) best = candidate
+    if (candidate && isFewerLoneWords(candidate, best)) best = candidate
   }
   return { size: best.size, lines: best.lines }
+}
+
+/**
+ * Whether a smaller size's wrap beats the current best: fewer lone words, or as many in fewer
+ * lines.
+ */
+function isFewerLoneWords(candidate, best) {
+  if (candidate.loneWords !== best.loneWords)
+    return candidate.loneWords < best.loneWords
+  return candidate.lines.length < best.lines.length
 }
 
 /** Font sizes from `largest` down to `smallest` in steps of 2, for `fitText`. */

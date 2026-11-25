@@ -114,6 +114,21 @@ export async function checkHeroes(root, options = {}) {
 }
 
 /**
+ * Locales whose own capture is missing and whose hero draws the en-US capture instead (a
+ * `source` with `{locale}`), as `{ store, locale, source }`. They are not a failure, so an app
+ * can localise its captures one locale at a time, but every run names them so an English
+ * screenshot never passes unnoticed.
+ */
+export function captureFallbacks(
+  root,
+  { assetsDir = DEFAULT_ASSETS_DIR } = {},
+) {
+  return loadHeroJobs(root, assetsDir).flatMap((job) =>
+    job.fallbacks.map((fallback) => ({ store: job.store, ...fallback })),
+  )
+}
+
+/**
  * Hero files left from a locale the listing no longer has: for a `file` whose `{locale}` is a
  * whole folder name (`screenshots/{locale}/00-hero-dark.png`), any sibling folder holding the
  * same file name for a locale that is not configured. They are only named, never deleted.

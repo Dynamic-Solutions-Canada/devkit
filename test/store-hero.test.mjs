@@ -27,6 +27,7 @@ import {
   fontsDir,
 } from '../src/store-hero/fonts.mjs'
 import {
+  captureFallbacks,
   checkHeroes,
   orphanedHeroes,
   writeHeroes,
@@ -272,6 +273,59 @@ test('fitText keeps the largest size when no word is alone, or a one-word line i
   })
 })
 
+test('fitText breaks a paragraph again to keep a balanced first or last word with the others', () => {
+  // Balancing takes the narrowest width that keeps four lines, which strands "Your". A break at
+  // the same size and line count keeps every word with a neighbour.
+  const fitted = fitText('Your reminders, one click from the Windows tray.', {
+    locale: 'en-US',
+    sizes: [20],
+    maxWidth: 160,
+    maxLines: 4,
+    measureAt: monospace,
+  })
+  assert.deepEqual(fitted, {
+    size: 20,
+    lines: ['Your reminders,', 'one click', 'from the', 'Windows tray.'],
+  })
+})
+
+test('fitText does not trade a lone word for a line that runs into the next sentence', () => {
+  // "anschließen. Der" would remove the lone word but join two sentences on one line.
+  const fitted = fitText(
+    'Hub am Sofa anschließen. Der PC wechselt zum Fernseher.',
+    {
+      locale: 'de-DE',
+      sizes: [20],
+      maxWidth: 160,
+      maxLines: 4,
+      measureAt: monospace,
+    },
+  )
+  assert.deepEqual(fitted.lines, [
+    'Hub am Sofa',
+    'anschließen.',
+    'Der PC wechselt',
+    'zum Fernseher.',
+  ])
+})
+
+test('fitText prefers fewer lines when a smaller size leaves as many words alone', () => {
+  // A line holds 8 characters at 20 and 11 at 18, and "eeeeeeee" is alone at both. At 20 that
+  // takes four lines; at 18 three, so the smaller size wins rather than keep a needless line.
+  const perCharacter = { 20: 150 / 8, 18: 150 / 11 }
+  const fitted = fitText('eeeeeeee aaa bbb ccc ddd ff gg', {
+    locale: 'en-US',
+    sizes: [20, 18],
+    maxWidth: 150,
+    maxLines: 5,
+    measureAt: (size) => (line) => [...line].length * perCharacter[size],
+  })
+  assert.deepEqual(fitted, {
+    size: 18,
+    lines: ['eeeeeeee', 'aaa bbb ccc', 'ddd ff gg'],
+  })
+})
+
 // --- PNG -------------------------------------------------------------------------------------
 
 test('PNG rows round-trip as 8-bit RGB with unfiltered rows, and other PNGs are refused', () => {
@@ -381,10 +435,16 @@ test('loadHeroJobs resolves one output per locale with its own text, skipping co
   assert.equal(job.layout, 'split')
   assert.deepEqual(job.size, { width: 1366, height: 768 })
   assert.deepEqual(
-    job.capture.region,
+    job.outputs[0].capture.region,
     [1500, 640, 420, 380],
     'the whole window from the sidecar',
   )
+  assert.equal(
+    job.outputs[1].capture,
+    job.outputs[0].capture,
+    'one source is one capture for every locale',
+  )
+  assert.deepEqual(job.fallbacks, [])
   assert.deepEqual(
     job.outputs.map((output) => [output.locale, output.path, output.headline]),
     [
@@ -453,7 +513,7 @@ test('loadHeroJobs refuses a crop that cuts the window, and accepts one around i
     hero: { ...HERO_ENTRY.hero, crop: [1480, 620, 440, 420] },
   }
   assert.deepEqual(
-    loadHeroJobs(repo(t, { entry: around }))[0].capture.region,
+    loadHeroJobs(repo(t, { entry: around }))[0].outputs[0].capture.region,
     [1480, 620, 440, 420],
   )
 })
@@ -467,8 +527,8 @@ test('fade: "bottom" lets a split crop cut only the window\'s bottom, and fades 
   // The top and sides stay whole; the bottom is cut and faded.
   const top = withHero({ crop: [1500, 640, 420, 200], fade: 'bottom' })
   const [job] = loadHeroJobs(repo(t, { entry: top }))
-  assert.deepEqual(job.capture.region, [1500, 640, 420, 200])
-  assert.equal(job.capture.fade, 'bottom')
+  assert.deepEqual(job.outputs[0].capture.region, [1500, 640, 420, 200])
+  assert.equal(job.outputs[0].capture.fade, 'bottom')
 
   const refused = [
     [
@@ -548,6 +608,121 @@ test('fade: "bottom" lets a split crop cut only the window\'s bottom, and fades 
   )
 })
 
+test('a source with {locale} gives each locale its own capture, falling back to en-US', (t) => {
+  const locales = {
+    ...LOCALES,
+    'de-DE': {
+      title: 'Beispiel',
+      heroHeadline: 'Jeder Raum.',
+      heroSubline: 'Ein Regler.',
+    },
+  }
+  const entry = {
+    ...HERO_ENTRY,
+    source: 'raw/microsoft/{locale}/00-flyout-dark.png',
+    hero: { ...HERO_ENTRY.hero, textFreeFile: 'text-free/00-hero-dark.png' },
+  }
+  const root = repo(t, { entry, locales })
+  const sidecar = JSON.stringify({ scale: 100, window: WINDOW })
+  for (const locale of ['en-US', 'ja-JP']) {
+    write(
+      root,
+      `store-assets/raw/microsoft/${locale}/00-flyout-dark.png`,
+      capture(WINDOW),
+    )
+    write(
+      root,
+      `store-assets/raw/microsoft/${locale}/00-flyout-dark.json`,
+      sidecar,
+    )
+  }
+
+  const [job] = loadHeroJobs(root)
+  const captureOf = (locale) =>
+    path.relative(
+      root,
+      job.outputs.find((output) => output.locale === locale).capture.file,
+    )
+  assert.equal(
+    captureOf('ja-JP'),
+    path.join('store-assets/raw/microsoft/ja-JP/00-flyout-dark.png'),
+  )
+  // de-DE has no capture yet: it draws the en-US one, and says so.
+  assert.equal(
+    captureOf('de-DE'),
+    path.join('store-assets/raw/microsoft/en-US/00-flyout-dark.png'),
+  )
+  assert.deepEqual(job.fallbacks, [
+    { locale: 'de-DE', source: 'raw/microsoft/de-DE/00-flyout-dark.png' },
+  ])
+  assert.deepEqual(captureFallbacks(root), [
+    {
+      store: 'microsoft',
+      locale: 'de-DE',
+      source: 'raw/microsoft/de-DE/00-flyout-dark.png',
+    },
+  ])
+  // The text-free image is for an English page, so it is drawn from the en-US capture.
+  assert.equal(job.outputs.at(-1).capture, job.outputs[0].capture)
+
+  // A capture without its sidecar is an error, not a fallback.
+  write(
+    root,
+    'store-assets/raw/microsoft/de-DE/00-flyout-dark.png',
+    capture(WINDOW),
+  )
+  assert.throws(
+    () => loadHeroJobs(root),
+    /has no 00-flyout-dark.json beside it/,
+  )
+
+  // en-US is the fallback, so it must have its own; without it the missing one is named.
+  rmSync(path.join(root, 'store-assets/raw/microsoft/de-DE'), {
+    recursive: true,
+  })
+  rmSync(path.join(root, 'store-assets/raw/microsoft/en-US'), {
+    recursive: true,
+  })
+  assert.throws(
+    () => loadHeroJobs(root),
+    /en-US\/00-flyout-dark.png\) is missing; other locales fall back to it/,
+  )
+})
+
+test('hero.crop is in logical pixels, so one crop serves 100% and 200% captures', (t) => {
+  const entry = {
+    ...HERO_ENTRY,
+    hero: { ...HERO_ENTRY.hero, crop: [1480, 620, 440, 420] },
+  }
+  const root = repo(t, { entry })
+  const doubled = Object.fromEntries(
+    Object.entries(WINDOW).map(([key, value]) => [key, value * 2]),
+  )
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160"><rect width="3840" height="2160" fill="#0B1530"/></svg>`
+  write(
+    root,
+    'store-assets/raw/microsoft/00-flyout-dark.png',
+    Buffer.from(new Resvg(svg).render().asPng()),
+  )
+  write(
+    root,
+    'store-assets/raw/microsoft/00-flyout-dark.json',
+    JSON.stringify({ scale: 200, window: doubled }),
+  )
+  const { capture: sharp } = loadHeroJobs(root)[0].outputs[0]
+  assert.deepEqual(sharp.region, [2960, 1240, 880, 840])
+  assert.equal(sharp.scale, 200)
+
+  // A crop that cuts the window is still refused, judged in logical pixels.
+  const cut = { ...entry, hero: { ...entry.hero, crop: [1500, 640, 420, 243] } }
+  write(
+    root,
+    'store-assets/manifest.json',
+    JSON.stringify({ microsoft: [cut] }),
+  )
+  assert.throws(() => loadHeroJobs(root), /must contain the whole window/)
+})
+
 test('textFreeFile adds one text-free output after the locales, for the split layout only', (t) => {
   const withHero = (extra) => ({
     ...HERO_ENTRY,
@@ -561,6 +736,7 @@ test('textFreeFile adds one text-free output after the locales, for the split la
   )
   assert.deepEqual(job.outputs.at(-1), {
     textFree: true,
+    capture: job.outputs[0].capture,
     path: path.join('store-assets/microsoft/text-free/00-hero-dark.png'),
   })
   assert.equal(job.outputs.length, 3, 'two locales, then the text-free image')
@@ -658,7 +834,10 @@ test('loadHeroJobs checks the entry itself', (t) => {
     source: undefined,
     hero: { ...HERO_ENTRY.hero, layout: 'brand-card' },
   }
-  assert.equal(loadHeroJobs(repo(t, { entry: card }))[0].capture, null)
+  assert.equal(
+    loadHeroJobs(repo(t, { entry: card }))[0].outputs[0].capture,
+    null,
+  )
 })
 
 test('loadHeroJobs wants the hero first in its list', (t) => {
@@ -859,6 +1038,45 @@ test(
     const result = run('--check')
     assert.equal(result.status, 1)
     assert.match(result.stderr, /fr-FR\/00-hero-dark.png/)
+  },
+)
+
+test(
+  'devkit-store-hero --check warns, without failing, about a locale drawn from the en-US capture',
+  needsFonts,
+  async (t) => {
+    const entry = {
+      ...HERO_ENTRY,
+      source: 'raw/microsoft/{locale}/00-flyout-dark.png',
+    }
+    const root = repo(t, { entry })
+    write(
+      root,
+      'store-assets/raw/microsoft/en-US/00-flyout-dark.png',
+      capture(WINDOW),
+    )
+    write(
+      root,
+      'store-assets/raw/microsoft/en-US/00-flyout-dark.json',
+      JSON.stringify({ scale: 100, window: WINDOW }),
+    )
+    const run = (...args) =>
+      spawnSync(process.execPath, [bin, ...args], {
+        cwd: root,
+        encoding: 'utf8',
+      })
+
+    const written = run()
+    assert.equal(written.status, 0)
+    assert.match(written.stderr, /warning: .*draw the en-US one/)
+
+    const checked = run('--check')
+    assert.equal(checked.status, 0)
+    assert.match(
+      checked.stderr,
+      /microsoft ja-JP: raw\/microsoft\/ja-JP\/00-flyout-dark.png is missing/,
+    )
+    assert.doesNotMatch(checked.stdout, /every hero matches its inputs$/m)
   },
 )
 

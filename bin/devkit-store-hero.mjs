@@ -6,7 +6,8 @@
  *
  * `--check` writes nothing and fails when a hero is missing, differs from what its inputs draw,
  * or was saved by another tool, for the repo's `validate` gate. Both modes name hero files left
- * from a locale the listing no longer has; `--check` fails on them. `--assets` names the
+ * from a locale the listing no longer has; `--check` fails on them. Both also warn, without
+ * failing, about each locale that draws the en-US capture because its own is missing. `--assets` names the
  * store-assets folder when it is not `store-assets/` at the repo root. `--fetch-fonts` only
  * downloads the pinned fonts, for a CI cache step.
  *
@@ -14,6 +15,7 @@
  * (as `devkit-icons` does) and downloads its fonts once (see "Store heroes" in the README).
  */
 import {
+  captureFallbacks,
   checkHeroes,
   orphanedHeroes,
   writeHeroes,
@@ -46,6 +48,22 @@ function reportOrphans(options) {
   return true
 }
 
+/**
+ * Warns on stderr about each locale drawn from the en-US capture; returns true when there were
+ * any. A warning, not a failure, so captures can be localised one locale at a time.
+ */
+function reportFallbacks(options) {
+  const fallbacks = captureFallbacks(root, options)
+  if (fallbacks.length === 0) return false
+
+  console.error(
+    'devkit-store-hero: warning: these locales have no capture of their own and draw the en-US one:',
+  )
+  for (const { store, locale, source } of fallbacks)
+    console.error(`  ${store} ${locale}: ${source} is missing`)
+  return true
+}
+
 try {
   const known = new Set(['--check', '--assets', '--fetch-fonts'])
   const unknown = args.find(
@@ -69,14 +87,20 @@ try {
       console.error('Run `devkit-store-hero` and commit the result.')
     }
     const hasOrphans = reportOrphans(options)
+    const hasFallbacks = reportFallbacks(options)
 
     if (stale.length > 0 || hasOrphans) process.exitCode = 1
+    else if (hasFallbacks)
+      console.log(
+        'devkit-store-hero: every hero matches its inputs, but some locales use the en-US capture (warning above)',
+      )
     else console.log('devkit-store-hero: every hero matches its inputs')
   } else {
     const { written, advice } = await writeHeroes(root, options)
     console.log(`devkit-store-hero: wrote ${written.length} files`)
     for (const line of advice) console.error(`devkit-store-hero: note: ${line}`)
     reportOrphans(options)
+    reportFallbacks(options)
   }
 } catch (error) {
   console.error(error.message)

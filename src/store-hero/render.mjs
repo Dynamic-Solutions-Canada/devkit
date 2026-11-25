@@ -35,12 +35,15 @@ export function createRenderer(Resvg, fontFiles) {
   }
 
   /**
-   * Draws one locale's hero, or the job's text-free variant when `output.textFree` is set.
+   * Draws one locale's hero, or the job's text-free variant when `output.textFree` is set, from
+   * that output's own capture (each locale may have its own; see `loadHeroJobs`).
    *
    * @returns {{ rows: Buffer, notes: Array<{ upscale: number }> }} PNG rows (see `rgbRows`) and
    *   facts worth reporting, such as how far the capture was enlarged
    */
-  function render(job, output) {
+  function render(heroJob, output) {
+    // The layouts read `job.capture`, so hand them this output's capture in its place.
+    const job = { ...heroJob, capture: output.capture ?? null }
     const { width, height } = job.size
     // The text-free variant has no locale and draws no text, so any family will do.
     const family = output.textFree ? 'Noto Sans' : fontFamily(output.locale)
@@ -48,7 +51,7 @@ export function createRenderer(Resvg, fontFiles) {
       width: (CANVAS_HEIGHT * width) / height,
       pixelsPerUnit: height / CANVAS_HEIGHT,
       family,
-      captureImage: job.capture ? captureUri(job) : null,
+      captureImage: job.capture ? captureUri(job.capture) : null,
       measureAt: (size, weight) => (text) =>
         measure(text, size, weight, family),
       notes: [],
@@ -68,10 +71,12 @@ export function createRenderer(Resvg, fontFiles) {
   return { render, measure }
 }
 
-/** The capture as a data URI, encoded once per job rather than once per locale. */
+/**
+ * A capture as a data URI, encoded once per capture rather than once per locale: locales that
+ * share a capture share its resolved object (see `loadHeroJobs`).
+ */
 const captureUris = new WeakMap()
-function captureUri(job) {
-  if (!captureUris.has(job.capture))
-    captureUris.set(job.capture, dataUri(job.capture.file))
-  return captureUris.get(job.capture)
+function captureUri(capture) {
+  if (!captureUris.has(capture)) captureUris.set(capture, dataUri(capture.file))
+  return captureUris.get(capture)
 }
