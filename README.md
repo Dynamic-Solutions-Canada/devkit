@@ -115,14 +115,13 @@ Preflight reads these arguments from its own process. Runners that consume argum
 
 `devkit-init` writes the dev glue every app would otherwise copy by hand, and keeps it current:
 
-| Output                                   | What devkit owns                                                                                                                                                                                                                   |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/dev/run-dev.mjs`                | The whole file. Do not edit it.                                                                                                                                                                                                    |
-| `package.json`                           | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
-| `paseo.json` (opt-in)                    | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
-| `scripts/deploy/deploy-over-ssh.mjs`     | The whole file, and the `deploy:prod` script that runs it. See [Deploying](#deploying).                                                                                                                                            |
-| `scripts/hooks/generated-file-guard.mjs` | The whole file, and its one `PreToolUse` registration in `.claude/settings.json`. See [Guarding generated files](#guarding-generated-files).                                                                                       |
-| `compose.dev.yml`                        | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
+| Output                                   | What devkit owns                                                                                                                                                                               |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/dev/run-dev.mjs`                | The whole file. Do not edit it.                                                                                                                                                                |
+| `package.json`                           | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's. |
+| `scripts/deploy/deploy-over-ssh.mjs`     | The whole file, and the `deploy:prod` script that runs it. See [Deploying](#deploying).                                                                                                        |
+| `scripts/hooks/generated-file-guard.mjs` | The whole file, and its one `PreToolUse` registration in `.claude/settings.json`. See [Guarding generated files](#guarding-generated-files).                                                   |
+| `compose.dev.yml`                        | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                       |
 
 The container's `HOME` is `/tmp/devkit-home`, which nothing creates until npm first writes to it. If the app mounts anything under it, such as a named volume at `/tmp/devkit-home/.android` or a read-only `.ssh` bind mount, Docker creates `HOME` owned by root first, and `npm install` then fails with `EACCES`. Create it in the app's dev Dockerfile before such a mount: `RUN install -d -m 1777 /tmp/devkit-home`, adding the mount point (for example `/tmp/devkit-home/.android`) for a named volume so a new volume takes the same mode. It is world-writable, not owned by `node`, because the container runs as the host's user and group IDs.
 
@@ -141,7 +140,7 @@ export default {
 }
 ```
 
-`generated` takes `runner`, `scripts`, `deploy` and `guard`, each `true` by default, and `paseo`, which is `false` by default: an app whose worktrees Paseo manages sets `generated: { paseo: true }` to have `paseo.json` written and checked. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
+`generated` takes `runner`, `scripts`, `deploy` and `guard`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
 
 ### Deploying
 
@@ -428,7 +427,7 @@ Unlike the `devkit` commands, `devkit-test` needs no bootstrapped machine and do
 
 Devkit CLI commands respect the current checkout's `.nvmrc`, including non-interactive worktree hooks. They select an already-installed runtime from `NVM_DIR` (default `~/.nvm`), put its tools first on PATH, and check exact npm pins in `package.json`. Installed nvm aliases are supported; exact versions make setup reproducible. Missing runtimes or conflicting pins stop before installs or infrastructure changes. Devkit never installs Node/npm or changes nvm's default.
 
-Use `devkit run npm run dev` to select the runtime before a project runner starts. A Paseo setup hook can invoke `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@dynamic-solutions-canada/devkit/bin/devkit.mjs" prepare` when the new worktree has no dependencies yet; `prepare` selects the target worktree's runtime. Apply the same launcher to dev, teardown, build and agent-hook commands. Projects without `.nvmrc` retain their invoking runtime.
+Use `devkit run npm run dev` to select the runtime before a project runner starts. A worktree setup hook can run `devkit prepare` from the PATH link that `devkit bootstrap` creates when the new worktree has no dependencies yet; `prepare` selects the target worktree's runtime. Run dev, build and agent-hook commands through `devkit run` as well. Projects without `.nvmrc` retain their invoking runtime.
 
 Library calls to `preflight`, `prepareDatabase` and `prepareCheckout` validate the executing runtime before preparing dependencies. They fail with an actionable message instead of replaying a runner that might already hold a checkout lease. Command entrypoints own runtime selection. A stale outer npm identity is cleared so preparation and startup use the same dependency fingerprint.
 
@@ -501,7 +500,7 @@ cleanup: {
 
 Names must start with `{project}-` or `{project}_`; cleanup also verifies each existing volume's Compose project label. Shared engine caches, CLI credentials, and other repositories' volumes must never appear here. Docker refuses removal of any volume still mounted by a container.
 
-For Paseo, set `worktree.teardown` to `node "$PASEO_SOURCE_CHECKOUT_PATH/node_modules/@dynamic-solutions-canada/devkit/bin/devkit.mjs" cleanup --paseo --yes`. The source checkout CLI works even when worktree setup failed before installing dependencies. `--paseo` requires the matching teardown environment and queries all active workspaces, including background workspaces, before stopping anything and again before deleting data. Remaining references preserve resources; an unavailable or malformed query fails closed. The CLI uses `PASEO_HOME`/`PASEO_HOST` and discovers `paseo-plus-plus` or `paseo` on PATH (`PASEO_CLI` overrides the executable). Paseo remains responsible for the final reference check and directory removal. Do not reopen a worktree while its archive operation is running.
+A worktree teardown hook can run `devkit cleanup --yes` from the PATH link that `devkit bootstrap` creates, so it works even when setup failed before installing dependencies.
 
 ## Remote development and an existing nginx server
 
