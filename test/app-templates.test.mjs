@@ -244,11 +244,25 @@ test('generated opt-outs in devkit.config.mjs merge with the defaults and are va
   })
   assert.deepEqual((await loadProjectConfig(root)).generated, {
     runner: false,
-    paseo: true,
+    paseo: false,
     scripts: true,
     deploy: true,
     guard: true,
   })
+
+  // paseo.json is opt-in: without the flag devkit-init neither writes nor checks it.
+  const plain = app(t, {
+    'package.json': { name: 'app', scripts: { test: 'devkit-test' } },
+    'devkit.config.mjs': 'export default {}\n',
+  })
+  const { generated } = await loadProjectConfig(plain)
+  assert.ok(!writeTemplates({ root: plain, generated }).includes('paseo.json'))
+  assert.ok(!existsSync(path.join(plain, 'paseo.json')))
+
+  const optedIn = app(t, {
+    'devkit.config.mjs': 'export default { generated: { paseo: true } }\n',
+  })
+  assert.equal((await loadProjectConfig(optedIn)).generated.paseo, true)
 
   const bad = app(t, {
     'devkit.config.mjs': 'export default { generated: { compose: false } }\n',

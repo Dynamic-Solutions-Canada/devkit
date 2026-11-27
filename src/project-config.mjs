@@ -68,11 +68,12 @@ const DEFAULTS = {
   test: { ignore: [], skipSuffixes: [] },
   /**
    * Which outputs `devkit-init` owns. Set one to false to keep a hand-written version, such as a
-   * custom dev runner; the check then ignores it as well.
+   * custom dev runner; the check then ignores it as well. `paseo` is opt-in: `paseo.json` serves
+   * only apps whose worktrees are managed by Paseo, so an app sets it to true to have it generated.
    */
   generated: {
     runner: true,
-    paseo: true,
+    paseo: false,
     scripts: true,
     deploy: true,
     guard: true,

@@ -119,7 +119,7 @@ Preflight reads these arguments from its own process. Runners that consume argum
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scripts/dev/run-dev.mjs`                | The whole file. Do not edit it.                                                                                                                                                                                                    |
 | `package.json`                           | Exactly `dev` and the lifecycle scripts `dev:background`, `dev:down`, `dev:cleanup`, `dev:doctor`, `dev:bootstrap`, `dev:host` and `dev:prepare-worktree`. Every other script stays the app's.                                     |
-| `paseo.json`                             | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
+| `paseo.json` (opt-in)                    | `worktree.setup`, `worktree.teardown`, and one script entry for each of `dev`, `dev:background`, `dev:down`, `dev:prepare-worktree`, `dev:doctor`, `validate`, `test` and `build` that the app defines. Other keys stay the app's. |
 | `scripts/deploy/deploy-over-ssh.mjs`     | The whole file, and the `deploy:prod` script that runs it. See [Deploying](#deploying).                                                                                                                                            |
 | `scripts/hooks/generated-file-guard.mjs` | The whole file, and its one `PreToolUse` registration in `.claude/settings.json`. See [Guarding generated files](#guarding-generated-files).                                                                                       |
 | `compose.dev.yml`                        | Nothing after the first write. It is created with a `node` service only when missing, and its environment list is the app's to complete.                                                                                           |
@@ -141,7 +141,7 @@ export default {
 }
 ```
 
-`generated` takes `runner`, `paseo`, `scripts`, `deploy` and `guard`, each `true` by default. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
+`generated` takes `runner`, `scripts`, `deploy` and `guard`, each `true` by default, and `paseo`, which is `false` by default: an app whose worktrees Paseo manages sets `generated: { paseo: true }` to have `paseo.json` written and checked. Like `devkit-test`, `devkit-init` needs no bootstrapped machine and runs on the Node that started it.
 
 ### Deploying
 
