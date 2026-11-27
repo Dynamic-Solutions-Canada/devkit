@@ -45,11 +45,11 @@ devkit owns a hostname, port and database per checkout and worktree, the routing
 
 ## Commands
 
-| Command                           | Proves                                             | Does not prove                                                                                    |
-| --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `npm test`                        | The unit tests pass on this Node                   | Behaviour against a live proxy, Docker or Paseo; one host-listener test skips itself without them |
-| `npm run build:browser-extension` | The VS Code browser bridge packages into a `.vsix` | That the extension works in VS Code                                                               |
-| `npm run check:browser-extension` | The tracked `.vsix` matches a rebuild from source  | That the extension works in VS Code; it needs network for the pinned packager                     |
+| Command                           | Proves                                             | Does not prove                                                                             |
+| --------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `npm test`                        | The unit tests pass on this Node                   | Behaviour against a live proxy or Docker; one host-listener test skips itself without them |
+| `npm run build:browser-extension` | The VS Code browser bridge packages into a `.vsix` | That the extension works in VS Code                                                        |
+| `npm run check:browser-extension` | The tracked `.vsix` matches a rebuild from source  | That the extension works in VS Code; it needs network for the pinned packager              |
 
 ## Release
 

@@ -68,12 +68,10 @@ const DEFAULTS = {
   test: { ignore: [], skipSuffixes: [] },
   /**
    * Which outputs `devkit-init` owns. Set one to false to keep a hand-written version, such as a
-   * custom dev runner; the check then ignores it as well. `paseo` is opt-in: `paseo.json` serves
-   * only apps whose worktrees are managed by Paseo, so an app sets it to true to have it generated.
+   * custom dev runner; the check then ignores it as well.
    */
   generated: {
     runner: true,
-    paseo: false,
     scripts: true,
     deploy: true,
     guard: true,
@@ -256,6 +254,13 @@ function isTestFileSuffix(suffix) {
 
 /** Validates the `devkit-init` opt-outs: an object of the known output names, each a boolean. */
 function validateGenerated(generated) {
+  // Named separately so an app still carrying the retired Paseo option is told what to do,
+  // instead of reading the generic message below as a typo.
+  if (generated && Object.hasOwn(generated, 'paseo')) {
+    fail(
+      '`generated.paseo` was removed along with Paseo support, and paseo.json is no longer generated; delete the `paseo` key',
+    )
+  }
   const names = Object.keys(DEFAULTS.generated)
   if (
     !generated ||
@@ -265,7 +270,7 @@ function validateGenerated(generated) {
     names.some((name) => typeof generated[name] !== 'boolean')
   ) {
     fail(
-      '`generated` may set only `runner`, `paseo`, `scripts`, `deploy` and `guard`, each true or false',
+      '`generated` may set only `runner`, `scripts`, `deploy` and `guard`, each true or false',
     )
   }
 }
