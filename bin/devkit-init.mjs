@@ -2,13 +2,13 @@
 /**
  * `devkit-init [--check]`: writes or checks the dev glue devkit generates into an app.
  *
- * Without options it writes the runner, the lifecycle npm scripts, `paseo.json` when the app opts
- * in, and, if missing, a first `compose.dev.yml`, and lists what changed. Run it after adding
- * devkit and after every pin bump, then commit the result. `--check` writes nothing and fails when an owned output is out
- * of date, for the app's `validate` gate.
+ * Without options it writes the runner, the lifecycle npm scripts and, if missing, a first
+ * `compose.dev.yml`, and lists what changed. Run it after adding devkit and after every pin bump,
+ * then commit the result. `--check` writes nothing and fails when an owned output is out of date,
+ * for the app's `validate` gate.
  *
  * Like `devkit-test`, it needs no bootstrapped machine and no nvm runtime switch, so the check runs
- * the same in CI. It reads only `package.json`, `paseo.json` and `devkit.config.mjs`.
+ * the same in CI. It reads only `package.json` and `devkit.config.mjs`.
  */
 import {
   checkTemplates,

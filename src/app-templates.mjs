@@ -1,10 +1,9 @@
 /**
  * The dev glue devkit generates into an app (D-045, SCRIPT-7): the runner, the lifecycle npm
- * scripts, `paseo.json`, and a first `compose.dev.yml`.
+ * scripts, and a first `compose.dev.yml`.
  *
- * Each output has an owner. devkit owns the whole runner file, exactly the npm script names below,
- * and exactly the `paseo.json` keys it writes; everything else in those files stays the app's and
- * is never touched. `compose.dev.yml` is written once, when it does not exist, because its
+ * Each output has an owner. devkit owns the whole runner file and exactly the npm script names
+ * below; everything else in those files stays the app's and is never touched. `compose.dev.yml` is written once, when it does not exist, because its
  * environment list is the app's policy; after that devkit neither checks nor rewrites it.
  *
  * `planTemplates` decides what each owned output should contain, `writeTemplates` applies the plan,
@@ -22,10 +21,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const templatesDir = fileURLToPath(new URL('../templates/', import.meta.url))
-
-/** Where apps reach devkit's CLI from a worktree hook or a Paseo script. */
-const DEVKIT_CLI =
-  'node_modules/@dynamic-solutions-canada/devkit/bin/devkit.mjs'
 
 export const RUNNER_PATH = 'scripts/dev/run-dev.mjs'
 export const COMPOSE_PATH = 'compose.dev.yml'
@@ -57,18 +52,6 @@ const DEPLOY_SCRIPT = {
   'deploy:prod': `node --env-file-if-exists=.env ${DEPLOY_PATH}`,
 }
 
-/** npm scripts that `paseo.json` mirrors, in order, when the app defines them (AI-12). */
-const PASEO_SCRIPTS = [
-  'dev',
-  'dev:background',
-  'dev:down',
-  'dev:prepare-worktree',
-  'dev:doctor',
-  'validate',
-  'test',
-  'build',
-]
-
 /** Reads a JSON file, or returns `fallback` when it does not exist. */
 function readJson(file, fallback) {
   if (!existsSync(file)) return fallback
@@ -86,28 +69,6 @@ function ownedScripts(generated) {
     ...(generated.scripts && generated.runner ? RUNNER_SCRIPT : {}),
     ...(generated.scripts ? LIFECYCLE_SCRIPTS : {}),
     ...(generated.deploy ? DEPLOY_SCRIPT : {}),
-  }
-}
-
-/**
- * Builds the `paseo.json` keys devkit owns. Script entries call the npm script through devkit's
- * launcher, so Paseo and a terminal run the same command; only scripts the app has are mirrored.
- */
-function ownedPaseo(scripts) {
-  const entries = {}
-  for (const name of PASEO_SCRIPTS) {
-    if (!scripts[name]) continue
-    const npmCommand = name === 'test' ? 'npm test' : `npm run ${name}`
-    entries[name.replaceAll(':', '-')] = {
-      command: `node ${DEVKIT_CLI} run ${npmCommand}`,
-    }
-  }
-  return {
-    worktree: {
-      setup: `node "$PASEO_SOURCE_CHECKOUT_PATH/${DEVKIT_CLI}" run npm run dev:prepare-worktree`,
-      teardown: `node "$PASEO_SOURCE_CHECKOUT_PATH/${DEVKIT_CLI}" cleanup --paseo --yes`,
-    },
-    scripts: entries,
   }
 }
 
@@ -183,20 +144,6 @@ export function planTemplates({ root, generated }) {
     add(
       CLAUDE_SETTINGS_PATH,
       formatJson(withGuardHook(readJson(settingsFile, {}))),
-    )
-  }
-
-  // paseo.json: devkit's keys replace their old values; app-added worktree and script keys stay.
-  if (generated.paseo) {
-    const existing = readJson(path.join(root, 'paseo.json'), {})
-    const owned = ownedPaseo(scripts)
-    add(
-      'paseo.json',
-      formatJson({
-        ...existing,
-        worktree: { ...existing.worktree, ...owned.worktree },
-        scripts: { ...existing.scripts, ...owned.scripts },
-      }),
     )
   }
 

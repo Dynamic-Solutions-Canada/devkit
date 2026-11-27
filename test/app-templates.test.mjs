@@ -27,7 +27,6 @@ const runnerTemplate = fileURLToPath(
 )
 const ALL = {
   runner: true,
-  paseo: true,
   scripts: true,
   deploy: true,
   guard: true,
@@ -53,7 +52,7 @@ function app(t, files) {
 const read = (root, relative) => readFileSync(path.join(root, relative), 'utf8')
 const readJson = (root, relative) => JSON.parse(read(root, relative))
 
-test('a fresh app gets the runner, lifecycle scripts, paseo.json and a first compose file', (t) => {
+test('a fresh app gets the runner, lifecycle scripts and a first compose file', (t) => {
   const root = app(t, {
     'package.json': {
       name: 'app',
@@ -69,7 +68,6 @@ test('a fresh app gets the runner, lifecycle scripts, paseo.json and a first com
     '.claude/settings.json',
     'compose.dev.yml',
     'package.json',
-    'paseo.json',
     'scripts/deploy/deploy-over-ssh.mjs',
     'scripts/dev/run-dev.mjs',
     'scripts/hooks/generated-file-guard.mjs',
@@ -92,26 +90,12 @@ test('a fresh app gets the runner, lifecycle scripts, paseo.json and a first com
     'node --env-file-if-exists=.env scripts/deploy/deploy-over-ssh.mjs',
   )
 
-  const paseo = readJson(root, 'paseo.json')
-  assert.match(paseo.worktree.teardown, /cleanup --paseo --yes$/)
-  assert.deepEqual(Object.keys(paseo.scripts), [
-    'dev',
-    'dev-background',
-    'dev-down',
-    'dev-prepare-worktree',
-    'dev-doctor',
-    'validate',
-    'test',
-    'build',
-  ])
-  assert.match(paseo.scripts.test.command, /devkit\.mjs run npm test$/)
-
   // Running it again changes nothing, and the check agrees.
   assert.deepEqual(writeTemplates({ root, generated: ALL }), [])
   assert.deepEqual(checkTemplates({ root, generated: ALL }), [])
 })
 
-test('app-owned scripts and paseo keys survive, and only owned values are replaced', (t) => {
+test('app-owned scripts survive, and only owned values are replaced', (t) => {
   const root = app(t, {
     'package.json': {
       scripts: {
@@ -119,10 +103,6 @@ test('app-owned scripts and paseo keys survive, and only owned values are replac
         'dev:fresh': 'devkit run node scripts/dev/run-dev.mjs --fresh',
         'dev:container': 'node scripts/dev/container.mjs',
       },
-    },
-    'paseo.json': {
-      worktree: { setup: 'old setup', note: 'kept' },
-      scripts: { 'dev-db': { command: 'npm run dev:db' } },
     },
   })
   writeTemplates({ root, generated: ALL })
@@ -134,11 +114,6 @@ test('app-owned scripts and paseo keys survive, and only owned values are replac
     'devkit run node scripts/dev/run-dev.mjs --fresh',
   )
   assert.equal(scripts['dev:container'], 'node scripts/dev/container.mjs')
-
-  const paseo = readJson(root, 'paseo.json')
-  assert.equal(paseo.worktree.note, 'kept')
-  assert.match(paseo.worktree.setup, /npm run dev:prepare-worktree$/)
-  assert.deepEqual(paseo.scripts['dev-db'], { command: 'npm run dev:db' })
 })
 
 test("an existing compose.dev.yml is the app's and is never rewritten or checked", (t) => {
@@ -161,17 +136,13 @@ test('the check reports drift in owned outputs and ignores JSON layout', (t) => 
   writeFileSync(path.join(root, 'package.json'), JSON.stringify(pkg))
   assert.deepEqual(checkTemplates({ root, generated: ALL }), [])
 
-  // Hand edits to the runner, an owned script or an owned paseo entry are.
+  // Hand edits to the runner or an owned script are.
   writeFileSync(path.join(root, 'scripts/dev/run-dev.mjs'), '// edited\n')
   pkg.scripts['dev:doctor'] = 'edited'
   writeFileSync(path.join(root, 'package.json'), JSON.stringify(pkg))
-  const paseo = readJson(root, 'paseo.json')
-  delete paseo.scripts['dev-down']
-  writeFileSync(path.join(root, 'paseo.json'), JSON.stringify(paseo))
 
   assert.deepEqual(checkTemplates({ root, generated: ALL }).sort(), [
     'package.json',
-    'paseo.json',
     'scripts/dev/run-dev.mjs',
   ])
 })
@@ -182,7 +153,6 @@ test('opt-outs keep a hand-written runner, its dev script and compose file out o
   })
   const generated = {
     runner: false,
-    paseo: true,
     scripts: true,
     deploy: false,
     guard: false,
@@ -244,25 +214,34 @@ test('generated opt-outs in devkit.config.mjs merge with the defaults and are va
   })
   assert.deepEqual((await loadProjectConfig(root)).generated, {
     runner: false,
-    paseo: false,
     scripts: true,
     deploy: true,
     guard: true,
   })
 
-  // paseo.json is opt-in: without the flag devkit-init neither writes nor checks it.
+  // devkit-init never writes paseo.json, and leaves one an app still has alone.
   const plain = app(t, {
     'package.json': { name: 'app', scripts: { test: 'devkit-test' } },
+    'paseo.json': { worktree: { setup: 'kept' } },
     'devkit.config.mjs': 'export default {}\n',
   })
   const { generated } = await loadProjectConfig(plain)
   assert.ok(!writeTemplates({ root: plain, generated }).includes('paseo.json'))
-  assert.ok(!existsSync(path.join(plain, 'paseo.json')))
-
-  const optedIn = app(t, {
-    'devkit.config.mjs': 'export default { generated: { paseo: true } }\n',
+  assert.deepEqual(checkTemplates({ root: plain, generated }), [])
+  assert.deepEqual(readJson(plain, 'paseo.json'), {
+    worktree: { setup: 'kept' },
   })
-  assert.equal((await loadProjectConfig(optedIn)).generated.paseo, true)
+
+  // The retired Paseo option is rejected by name, whichever value an app left behind.
+  for (const value of [true, false]) {
+    const stale = app(t, {
+      'devkit.config.mjs': `export default { generated: { paseo: ${value} } }\n`,
+    })
+    await assert.rejects(
+      loadProjectConfig(stale),
+      /`generated\.paseo` was removed along with Paseo support.*delete the `paseo` key/,
+    )
+  }
 
   const bad = app(t, {
     'devkit.config.mjs': 'export default { generated: { compose: false } }\n',
