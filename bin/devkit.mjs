@@ -441,13 +441,12 @@ try {
 switch (command) {
   case 'cleanup':
     try {
-      const unknown = args.find((arg) => !['--yes', '--paseo'].includes(arg))
+      const unknown = args.find((arg) => arg !== '--yes')
       if (unknown) throw new Error(`unknown cleanup option: ${unknown}`)
       await cleanupCheckout({
         repoRoot,
         config: requireConfig(),
         yes: args.includes('--yes'),
-        paseo: args.includes('--paseo'),
       })
     } catch (error) {
       fail(error.message)
@@ -502,7 +501,7 @@ its own database and its own ports, all derived from its path.
   devkit snapshot     capture this checkout's dev data as the baseline new ones clone
   devkit reset        drop and re-clone this worktree's database (--empty skips the baseline)
   devkit prune        drop databases whose worktree is gone (--yes to actually drop)
-  devkit cleanup      preview private worktree resource removal (--yes removes; --paseo checks active references)
+  devkit cleanup      preview private worktree resource removal (--yes removes)
   devkit infra        start the proxy + this checkout's database (proxy only outside a repo)
   devkit use          show or choose which checkout of each dependency this checkout uses
                       (devkit use <dependency> <worktree>, or <dependency> --primary to revert)

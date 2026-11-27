@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import {
-  cleanupCheckout,
-  checkoutWorkspaceReferences,
-} from '../src/checkout-cleanup.mjs'
+import { cleanupCheckout } from '../src/checkout-cleanup.mjs'
 
 function fixture(t, options = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'devkit-cleanup-'))
@@ -126,65 +123,6 @@ test('primary checkouts are rejected before reading config or Docker', async (t)
   assert.deepEqual(f.events, [])
 })
 
-test('an active Paseo reference preserves running resources, including background/nested paths', async (t) => {
-  const f = fixture(t)
-  const nested = path.join(f.identity.toplevel, 'app')
-  mkdirSync(nested)
-  const result = await cleanupCheckout({
-    ...f.options,
-    paseo: true,
-    env: { PASEO_WORKTREE_PATH: f.identity.toplevel },
-    listWorkspaces: () => [{ cwd: nested, background: true }],
-  })
-  assert.equal(result.preserved, true)
-  assert.deepEqual(f.events, [])
-})
-
-test('Paseo lookup failure or malformed response fails closed before stopping anything', async (t) => {
-  const f = fixture(t)
-  for (const listWorkspaces of [
-    () => {
-      throw new Error('daemon unavailable')
-    },
-    () => ({}),
-    () => [{}],
-  ]) {
-    await assert.rejects(
-      cleanupCheckout({
-        ...f.options,
-        paseo: true,
-        env: { PASEO_WORKTREE_PATH: f.identity.toplevel },
-        listWorkspaces,
-      }),
-    )
-  }
-  assert.deepEqual(f.events, [])
-})
-
-test('archive invocation must attest the exact worktree path', async (t) => {
-  const f = fixture(t)
-  await assert.rejects(
-    cleanupCheckout({ ...f.options, paseo: true, env: {} }),
-    /matching PASEO_WORKTREE_PATH/,
-  )
-  assert.deepEqual(f.events, [])
-})
-
-test('a workspace opened while waiting for a runner preserves its data', async (t) => {
-  const f = fixture(t)
-  let checks = 0
-  const result = await cleanupCheckout({
-    ...f.options,
-    paseo: true,
-    env: { PASEO_WORKTREE_PATH: f.identity.toplevel },
-    listWorkspaces: () =>
-      ++checks === 1 ? [] : [{ cwd: f.identity.toplevel }],
-  })
-  assert.equal(result.preserved, true)
-  assert.ok(!f.events.some((e) => e[0] === 'stop' || e.includes('rm')))
-  assert.deepEqual(f.events.at(-1), ['release'])
-})
-
 test('foreign volume ownership is rejected before any mutation', async (t) => {
   const f = fixture(t)
   await assert.rejects(
@@ -227,18 +165,4 @@ test('an already removed database is idempotent', async (t) => {
     },
   })
   assert.deepEqual(result.volumes, [])
-})
-
-test('workspace references resolve symlinks without matching sibling prefixes', (t) => {
-  const f = fixture(t)
-  const link = `${f.identity.toplevel}-link`
-  symlinkSync(f.identity.toplevel, link)
-  t.after(() => rmSync(link))
-  assert.equal(
-    checkoutWorkspaceReferences(
-      [{ cwd: link }, { cwd: `${link}-other` }],
-      f.identity.toplevel,
-    ).length,
-    1,
-  )
 })
